@@ -781,7 +781,8 @@ export function createUpgradeHandler(cfg: Config, handlers: Partial<Record<WsRou
         if (handler) handler(ws, route, req);
         else ws.close(4404, "not_implemented");
       });
-    } catch {
+    } catch (err) {
+      console.error("ws upgrade failed", err);
       socket.destroy();
     }
   };
