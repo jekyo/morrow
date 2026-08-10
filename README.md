@@ -10,6 +10,6 @@
 
 ## Run (Docker)
 
-    docker run -e MORROW_API_KEY=secret -v morrow-data:/data -p 3000:3000 ghcr.io/OWNER/morrow:latest
+    docker run -e MORROW_API_KEY=secret -v morrow-data:/data -p 3000:3000 ghcr.io/jekyo/morrow:latest
 
 Docs: `docs/` — vision, v1 spec, UI spec, design system.
