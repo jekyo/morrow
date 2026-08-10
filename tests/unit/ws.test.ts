@@ -16,4 +16,7 @@ describe("matchWsRoute", () => {
     expect(matchWsRoute("/playwright/")).toBeUndefined();
     expect(matchWsRoute("/playwright/a/b")).toBeUndefined();
   });
+  it("returns undefined on malformed percent-encoding", () => {
+    expect(matchWsRoute("/viewer/%zz")).toBeUndefined();
+  });
 });
