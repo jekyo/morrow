@@ -16,4 +16,8 @@ describe("extractToken", () => {
   it("prefers header over query", () =>
     expect(extractToken({ authorization: "Bearer a" }, new URLSearchParams("token=b"))).toBe("a"));
   it("returns undefined when absent", () => expect(extractToken({}, null)).toBeUndefined());
+  it("accepts lowercase bearer scheme", () =>
+    expect(extractToken({ authorization: "bearer abc" }, null)).toBe("abc"));
+  it("tolerates extra whitespace after scheme", () =>
+    expect(extractToken({ authorization: "Bearer  abc" }, null)).toBe("abc"));
 });

@@ -21,6 +21,7 @@ export async function handle(fn: () => Promise<NextResponse> | NextResponse): Pr
   try {
     return await fn();
   } catch (err) {
+    if (!(err instanceof ApiError)) console.error("unhandled api error", err);
     const status = err instanceof ApiError ? err.status : 500;
     return NextResponse.json(toErrorBody(err), { status });
   }

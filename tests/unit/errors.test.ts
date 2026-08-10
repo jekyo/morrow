@@ -8,9 +8,9 @@ describe("errors", () => {
     expect(toErrorBody(e)).toEqual({ error: { code: "profile_not_found", message: "No such profile" } });
   });
 
-  it("wraps unknown errors as internal_error", () => {
+  it("redacts unknown errors as internal_error", () => {
     expect(toErrorBody(new Error("boom"))).toEqual({
-      error: { code: "internal_error", message: "boom" },
+      error: { code: "internal_error", message: "Internal error" },
     });
   });
 });

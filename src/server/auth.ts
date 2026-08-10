@@ -15,6 +15,9 @@ export function extractToken(
 ): string | undefined {
   const raw = headers.authorization;
   const header = Array.isArray(raw) ? raw[0] : raw;
-  if (header?.startsWith("Bearer ")) return header.slice(7);
+  if (header) {
+    const m = header.match(/^Bearer\s+(.+)$/i);
+    if (m) return m[1];
+  }
   return query?.get("token") ?? undefined;
 }

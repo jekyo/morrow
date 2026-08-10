@@ -30,4 +30,9 @@ describe("loadConfig", () => {
     expect(c.maxProfiles).toBe(2);
     expect(c.launchTimeoutMs).toBe(30_000);
   });
+
+  it("throws on non-numeric values", () => {
+    expect(() => loadConfig({ MORROW_API_KEY: "k", MORROW_PORT: "abc" })).toThrow(/MORROW_PORT/);
+    expect(() => loadConfig({ MORROW_API_KEY: "k", MORROW_MAX_PROFILES: "" })).toThrow(/MORROW_MAX_PROFILES/);
+  });
 });
