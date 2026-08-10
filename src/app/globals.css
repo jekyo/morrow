@@ -1,0 +1,41 @@
+@import "tailwindcss";
+@plugin "daisyui" {
+  themes: morrow --default;
+}
+
+@plugin "daisyui/theme" {
+  name: "morrow";
+  default: true;
+  prefersdark: true;
+
+  --color-base-100: #0c0b0a;
+  --color-base-200: #121110;
+  --color-base-300: #201d1a;
+  --color-base-content: #f5f1ea;
+
+  --color-primary: #e56f24;
+  --color-primary-content: #160c05;
+  --color-secondary: #9b9388;
+  --color-secondary-content: #0c0b0a;
+  --color-accent: #d7a84a;
+  --color-accent-content: #160f05;
+  --color-neutral: #292622;
+  --color-neutral-content: #e8e1d7;
+
+  --color-info: #9b9388;
+  --color-info-content: #0c0b0a;
+  --color-success: #79a96b;
+  --color-success-content: #081007;
+  --color-warning: #d7a84a;
+  --color-warning-content: #120d05;
+  --color-error: #d05c4d;
+  --color-error-content: #150605;
+
+  --radius-selector: 0.375rem;
+  --radius-field: 0.375rem;
+  --radius-box: 0.5rem;
+
+  --border: 1px;
+  --depth: 0;
+  --noise: 0;
+}
