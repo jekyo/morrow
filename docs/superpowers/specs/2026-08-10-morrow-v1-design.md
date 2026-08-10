@@ -223,6 +223,17 @@ Prometheus text format: later, endpoint shape leaves room for it.
 
 ---
 
+## 7b. Configuration (env vars)
+
+```text
+MORROW_API_KEY        required — the single access token
+MORROW_PORT           default 3000
+MORROW_DATA_DIR       default /data
+MORROW_MAX_PROFILES   default 5 — max concurrently running profiles; start/attach
+                      beyond it returns 429 `too_many_profiles` (feeds /pressure)
+MORROW_LAUNCH_TIMEOUT default 60s
+```
+
 ## 8. Security notes (v1 posture)
 
 - One API key gates everything; ws upgrades check the token before proxying.
