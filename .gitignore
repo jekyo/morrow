@@ -8,3 +8,7 @@ next-env.d.ts
 .env.local
 .playwright-mcp/
 .env.deploy
+
+# stray root-level scratch scripts
+/*.mjs
+!postcss.config.mjs
