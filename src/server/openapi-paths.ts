@@ -25,6 +25,7 @@ const Profile = z
     proxy: z.string().nullable(),
     locale: z.string().nullable(),
     timezone: z.string().nullable(),
+    os: z.enum(["windows", "macos", "linux"]).nullable(),
     viewport: Viewport.nullable(),
     createdAt: z.string(),
     updatedAt: z.string(),

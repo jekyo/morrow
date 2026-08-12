@@ -33,6 +33,7 @@ export async function POST(req: Request) {
       timezone: body.timezone,
       viewportWidth: body.viewport?.width,
       viewportHeight: body.viewport?.height,
+      os: body.os,
     });
     db.recordEvent(p.id, "profile.created");
     return NextResponse.json(profileJson(p, false), { status: 201 });

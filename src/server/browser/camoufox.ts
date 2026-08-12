@@ -35,6 +35,22 @@ export interface StoredFingerprint {
   seeds: CamoufoxSeeds;
 }
 
+/** camoufox-js SUPPORTED_OS (camoufox-js/dist/fingerprints.js) — kept in sync manually. */
+const SUPPORTED_OS = ["windows", "macos", "linux"] as const;
+export type CamoufoxOs = (typeof SUPPORTED_OS)[number];
+
+/**
+ * Windows is by far the most common real-world desktop population, so it's
+ * the default for profiles that don't pick an OS — see docs/notes/fingerprint-audit.md
+ * P0-OS (a hardcoded `linux` population is rare and mildly suspicious).
+ */
+const DEFAULT_OS: CamoufoxOs = "windows";
+
+/** Validates a profile's `os` field, falling back to the default for anything unrecognized. */
+function resolveOs(os: string | null | undefined): CamoufoxOs {
+  return (SUPPORTED_OS as readonly string[]).includes(os ?? "") ? (os as CamoufoxOs) : DEFAULT_OS;
+}
+
 function randomSeeds(): CamoufoxSeeds {
   const randint = (min: number, max: number) => Math.floor(Math.random() * (max - min + 1)) + min;
   return {
@@ -82,6 +98,14 @@ export function buildCamoufoxOptions(
   }
   if (profile.viewportWidth && profile.viewportHeight)
     o.window = [profile.viewportWidth, profile.viewportHeight];
+  // Aligns fonts and other OS-partitioned launch behavior with the chosen OS
+  // (camoufox-js/dist/utils.js launchOptions() destructures `os`). Harmless
+  // when a fingerprint is already supplied (our case): camoufox-js only
+  // consults `operatingSystems` for fresh fingerprint generation, which we
+  // do ourselves in generateFingerprint() below — but it's the OS-aligned
+  // font/webgl config path camoufox-js documents this option for, so pass it
+  // through for forward-compatibility and correctness if that changes.
+  o.os = resolveOs(profile.os);
   return o;
 }
 
@@ -98,7 +122,7 @@ export class CamoufoxRuntime implements BrowserRuntime {
         ? [profile.viewportWidth, profile.viewportHeight]
         : undefined;
     const stored: StoredFingerprint = {
-      fingerprint: generateFingerprint(window, { operatingSystems: ["linux"] }),
+      fingerprint: generateFingerprint(window, { operatingSystems: [resolveOs(profile.os)] }),
       seeds: randomSeeds(),
     };
     return stored;

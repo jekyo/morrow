@@ -11,6 +11,7 @@ export const createProfileSchema = z.object({
   locale: z.string().min(2).optional(),
   timezone: z.string().min(1).optional(),
   viewport: z.object({ width: z.number().int().positive(), height: z.number().int().positive() }).optional(),
+  os: z.enum(["windows", "macos", "linux"]).optional(),
 });
 
 export const updateProfileSchema = z.object({
@@ -18,6 +19,7 @@ export const updateProfileSchema = z.object({
   locale: z.string().min(2).nullable().optional(),
   timezone: z.string().min(1).nullable().optional(),
   viewport: z.object({ width: z.number().int().positive(), height: z.number().int().positive() }).optional(),
+  os: z.enum(["windows", "macos", "linux"]).optional(),
 });
 
 /** Patterns are compiled with `new RegExp` at request time — reject bad ones as 400, not 500. */

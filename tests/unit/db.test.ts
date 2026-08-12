@@ -122,7 +122,26 @@ describe("update/delete", () => {
 
 describe("migrations", () => {
   it("stamps user_version", () => {
-    expect(db.schemaVersion()).toBe(1);
+    expect(db.schemaVersion()).toBe(2);
+  });
+});
+
+describe("os field", () => {
+  it("stores and retrieves the per-profile OS", () => {
+    const p = db.createProfile({ name: "a", os: "windows" });
+    expect(p.os).toBe("windows");
+    expect(db.getProfileById(p.id)!.os).toBe("windows");
+  });
+
+  it("defaults to null when omitted", () => {
+    const p = db.createProfile({ name: "a" });
+    expect(p.os).toBeNull();
+  });
+
+  it("can be changed via updateProfile", () => {
+    const p = db.createProfile({ name: "a", os: "linux" });
+    db.updateProfile(p.id, { os: "macos" });
+    expect(db.getProfileById(p.id)!.os).toBe("macos");
   });
 });
 

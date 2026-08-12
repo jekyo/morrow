@@ -56,6 +56,23 @@ describe("POST /profiles", () => {
     const res = await POST(new Request("http://x/api/v1/profiles", { method: "POST", body: "{}" }));
     expect(res.status).toBe(401);
   });
+
+  it("accepts and returns an os selection", async () => {
+    const res = await POST_profiles({ name: "x-os", os: "macos" });
+    expect(res.status).toBe(201);
+    expect((await res.json()).os).toBe("macos");
+  });
+
+  it("rejects an unrecognized os value", async () => {
+    const res = await POST_profiles({ name: "x-bad-os", os: "amiga" });
+    expect(res.status).toBe(400);
+    expect((await res.json()).error.code).toBe("invalid_request");
+  });
+
+  it("defaults os to null when omitted", async () => {
+    const res = await POST_profiles({ name: "x-no-os" });
+    expect((await res.json()).os).toBeNull();
+  });
 });
 
 describe("GET /profiles + /profiles/:name", () => {
@@ -91,6 +108,21 @@ describe("PATCH + DELETE /profiles/:name", () => {
     );
     expect(res.status).toBe(200);
     expect((await res.json()).proxy).toBe("http://u:p@h:1");
+  });
+
+  it("updates os", async () => {
+    await POST_profiles({ name: "a" });
+    const { PATCH } = await import("@/app/api/v1/profiles/[name]/route");
+    const res = await PATCH(
+      new Request("http://x/api/v1/profiles/a", {
+        method: "PATCH",
+        headers: { ...auth, "content-type": "application/json" },
+        body: JSON.stringify({ os: "linux" }),
+      }),
+      { params: Promise.resolve({ name: "a" }) }
+    );
+    expect(res.status).toBe(200);
+    expect((await res.json()).os).toBe("linux");
   });
 
   it("deletes a stopped profile", async () => {

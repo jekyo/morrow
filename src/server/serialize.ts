@@ -8,6 +8,7 @@ export function profileJson(p: Profile, running: boolean) {
     proxy: p.proxy,
     locale: p.locale,
     timezone: p.timezone,
+    os: p.os,
     viewport: p.viewportWidth && p.viewportHeight ? { width: p.viewportWidth, height: p.viewportHeight } : null,
     createdAt: p.createdAt,
     updatedAt: p.updatedAt,

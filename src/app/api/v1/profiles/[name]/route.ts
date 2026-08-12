@@ -42,6 +42,7 @@ export async function PATCH(req: Request, ctx: Ctx) {
       ...("locale" in body ? { locale: body.locale ?? null } : {}),
       ...("timezone" in body ? { timezone: body.timezone ?? null } : {}),
       ...(body.viewport ? { viewportWidth: body.viewport.width, viewportHeight: body.viewport.height } : {}),
+      ...("os" in body ? { os: body.os } : {}),
     });
     return NextResponse.json(profileJson(db.getProfileByName(name)!, getProfileManager().isRunning(name)));
   });

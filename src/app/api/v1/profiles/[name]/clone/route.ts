@@ -33,6 +33,7 @@ export async function POST(req: Request, ctx: Ctx) {
       timezone: src.timezone ?? undefined,
       viewportWidth: src.viewportWidth ?? undefined,
       viewportHeight: src.viewportHeight ?? undefined,
+      os: src.os ?? undefined,
     });
     const srcDir = join(cfg.dataDir, "profiles", src.id);
     if (existsSync(srcDir)) cpSync(srcDir, join(cfg.dataDir, "profiles", clone.id), { recursive: true });

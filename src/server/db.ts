@@ -13,6 +13,7 @@ export interface Profile {
   timezone: string | null;
   viewportWidth: number | null;
   viewportHeight: number | null;
+  os: string | null;
   fingerprintSeed: string;
   createdAt: string;
   updatedAt: string;
@@ -46,6 +47,7 @@ CREATE TABLE IF NOT EXISTS profiles (
   timezone TEXT,
   viewport_width INTEGER,
   viewport_height INTEGER,
+  os TEXT,
   fingerprint_seed TEXT NOT NULL,
   fingerprint TEXT,
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
@@ -83,6 +85,7 @@ function rowToProfile(r: any): Profile {
     timezone: r.timezone,
     viewportWidth: r.viewport_width,
     viewportHeight: r.viewport_height,
+    os: r.os,
     fingerprintSeed: r.fingerprint_seed,
     createdAt: r.created_at,
     updatedAt: r.updated_at,
@@ -96,11 +99,14 @@ export interface CreateProfileInput {
   timezone?: string;
   viewportWidth?: number;
   viewportHeight?: number;
+  os?: string;
 }
 
 const MIGRATIONS: string[] = [
   // 1: fingerprint column (fresh installs already have it via SCHEMA)
   `ALTER TABLE profiles ADD COLUMN fingerprint TEXT`,
+  // 2: per-profile OS selection (fresh installs already have it via SCHEMA)
+  `ALTER TABLE profiles ADD COLUMN os TEXT`,
 ];
 
 function migrate(db: Database.Database): void {
@@ -130,8 +136,8 @@ export class MorrowDb {
     const profileId = id("prof");
     this.db
       .prepare(
-        `INSERT INTO profiles (id, name, proxy, locale, timezone, viewport_width, viewport_height, fingerprint_seed)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+        `INSERT INTO profiles (id, name, proxy, locale, timezone, viewport_width, viewport_height, os, fingerprint_seed)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
       )
       .run(
         profileId,
@@ -141,6 +147,7 @@ export class MorrowDb {
         input.timezone ?? null,
         input.viewportWidth ?? null,
         input.viewportHeight ?? null,
+        input.os ?? null,
         randomBytes(16).toString("hex")
       );
     return this.getProfileById(profileId)!;
@@ -264,8 +271,8 @@ export class MorrowDb {
 
   updateProfile(
     profileId: string,
-    patch: Partial<Pick<Profile, "proxy" | "locale" | "timezone" | "viewportWidth" | "viewportHeight">> &
-      { [K in "proxy" | "locale" | "timezone"]?: string | null }
+    patch: Partial<Pick<Profile, "proxy" | "locale" | "timezone" | "viewportWidth" | "viewportHeight" | "os">> &
+      { [K in "proxy" | "locale" | "timezone" | "os"]?: string | null }
   ): void {
     const cols: Record<string, string> = {
       proxy: "proxy",
@@ -273,6 +280,7 @@ export class MorrowDb {
       timezone: "timezone",
       viewportWidth: "viewport_width",
       viewportHeight: "viewport_height",
+      os: "os",
     };
     const sets: string[] = [];
     const values: unknown[] = [];

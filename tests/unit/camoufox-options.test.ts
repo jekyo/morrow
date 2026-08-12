@@ -12,6 +12,7 @@ const base: Profile = {
   timezone: null,
   viewportWidth: null,
   viewportHeight: null,
+  os: null,
   fingerprintSeed: "s",
   createdAt: "",
   updatedAt: "",
@@ -79,6 +80,16 @@ describe("buildCamoufoxOptions", () => {
     expect("geoip" in o).toBe(false);
     expect((o.config as Record<string, unknown>).timezone).toBeUndefined();
   });
+
+  it("defaults the camoufox `os` launch option to windows when the profile has none", () => {
+    const o = buildCamoufoxOptions(base, { profileDir: "/d", fingerprint: storedFingerprint });
+    expect(o.os).toBe("windows");
+  });
+
+  it("passes the profile's os through to the camoufox `os` launch option", () => {
+    const o = buildCamoufoxOptions({ ...base, os: "macos" }, { profileDir: "/d", fingerprint: storedFingerprint });
+    expect(o.os).toBe("macos");
+  });
 });
 
 describe("CamoufoxRuntime.generateFingerprint", () => {
@@ -102,6 +113,37 @@ describe("CamoufoxRuntime.generateFingerprint", () => {
     const a = runtime.generateFingerprint(base) as { seeds: Record<string, number> };
     const b = runtime.generateFingerprint(base) as { seeds: Record<string, number> };
     expect(a.seeds).not.toEqual(b.seeds);
+  });
+
+  it("defaults to windows when the profile has no os set", () => {
+    const runtime = new CamoufoxRuntime();
+    const stored = runtime.generateFingerprint(base) as { fingerprint: { navigator: { userAgent: string } } };
+    expect(stored.fingerprint.navigator.userAgent).toMatch(/Windows NT/);
+  });
+
+  it("samples a macOS fingerprint when the profile's os is macos", () => {
+    const runtime = new CamoufoxRuntime();
+    const stored = runtime.generateFingerprint({ ...base, os: "macos" }) as {
+      fingerprint: { navigator: { userAgent: string; platform: string } };
+    };
+    expect(stored.fingerprint.navigator.userAgent).toMatch(/Macintosh/);
+    expect(stored.fingerprint.navigator.platform).toBe("MacIntel");
+  });
+
+  it("samples a linux fingerprint when the profile's os is linux", () => {
+    const runtime = new CamoufoxRuntime();
+    const stored = runtime.generateFingerprint({ ...base, os: "linux" }) as {
+      fingerprint: { navigator: { userAgent: string } };
+    };
+    expect(stored.fingerprint.navigator.userAgent).toMatch(/X11; Linux/);
+  });
+
+  it("falls back to windows for an unrecognized os value", () => {
+    const runtime = new CamoufoxRuntime();
+    const stored = runtime.generateFingerprint({ ...base, os: "amiga" }) as {
+      fingerprint: { navigator: { userAgent: string } };
+    };
+    expect(stored.fingerprint.navigator.userAgent).toMatch(/Windows NT/);
   });
 });
 
