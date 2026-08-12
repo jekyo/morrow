@@ -6,6 +6,7 @@ import { getDb } from "@/server/db";
 import { createUpgradeHandler } from "@/server/ws";
 import { playwrightAttachHandler, defaultAttachDeps } from "@/server/attach";
 import { viewerHandler, defaultViewerDeps } from "@/server/viewer-handler";
+import { mcpHandler } from "@/server/mcp/handler";
 
 const dev = process.env.NODE_ENV !== "production";
 
@@ -25,7 +26,13 @@ async function main() {
   // see the comment on createUpgradeHandler.
   const nextUpgradeHandler = app.getUpgradeHandler();
 
-  const server = createServer((req, res) => handleRequest(req, res));
+  const server = createServer((req, res) => {
+    // MCP owns /mcp end to end (raw Node req/res + streamable HTTP), so it has
+    // to win before Next sees the request.
+    if (req.url && (req.url === "/mcp" || req.url.startsWith("/mcp?") || req.url.startsWith("/mcp/")))
+      return void mcpHandler(req, res);
+    return void handleRequest(req, res);
+  });
   server.on(
     "upgrade",
     createUpgradeHandler(

@@ -17,6 +17,7 @@
   },
   "dependencies": {
     "@asteasolutions/zod-to-openapi": "^9.1.0",
+    "@modelcontextprotocol/sdk": "^1.30.0",
     "@mozilla/readability": "^0.6.0",
     "better-sqlite3": "^13.0.3",
     "camoufox-js": "^0.12.0",
