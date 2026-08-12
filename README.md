@@ -59,6 +59,17 @@ throwaway browser. See [MCP](#mcp) below.
     npm install
     npm run dev            # http://localhost:3000
 
+Open the dev server at `http://localhost:3000`. If you reach it from any other
+host — a LAN IP, a hostname like `morrow.local`, or a tunnel — Next.js blocks
+its `/_next/*` dev assets as cross-origin (the page shell loads but scripts and
+hot-reload fail, which looks like a CORS error). List those hosts in
+`MORROW_DEV_ORIGINS` (comma-separated, no protocol/port) and restart:
+
+    MORROW_DEV_ORIGINS=morrow.local,192.168.1.50 npm run dev
+
+This only affects `npm run dev`; the production image serves assets same-origin
+and is unaffected.
+
 ## Run (Docker)
 
     docker run -e MORROW_API_KEY=secret -v morrow-data:/data -p 3000:3000 ghcr.io/jekyo/morrow:latest
