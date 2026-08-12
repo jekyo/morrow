@@ -200,6 +200,14 @@ export class MorrowDb {
       }));
   }
 
+  /** Count events whose type starts with `prefix`, recorded at or after `sinceIso`. */
+  countEventsSince(prefix: string, sinceIso: string): number {
+    const r = this.db
+      .prepare(`SELECT COUNT(*) AS n FROM events WHERE type LIKE ? AND created_at >= ?`)
+      .get(`${prefix}%`, sinceIso) as { n: number };
+    return r.n;
+  }
+
   schemaVersion(): number {
     return this.db.pragma("user_version", { simple: true }) as number;
   }
