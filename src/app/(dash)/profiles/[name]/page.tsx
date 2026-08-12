@@ -31,6 +31,14 @@ export default function ProfileDetailPage() {
 
   const profileSessions = useMemo(() => sessions.filter((s) => s.profileName === name), [sessions, name]);
 
+  // Connect snippets must use the page's actual scheme: wss/https on a TLS
+  // deployment (e.g. morrow.jekyo.app), ws/http on plain localhost.
+  const httpOrigin = typeof window !== "undefined" ? window.location.origin : "http://host";
+  const wsOrigin =
+    typeof window !== "undefined"
+      ? `${window.location.protocol === "https:" ? "wss:" : "ws:"}//${window.location.host}`
+      : "ws://host";
+
   async function stop() {
     if (!client) return;
     setPending(true);
@@ -146,12 +154,12 @@ export default function ProfileDetailPage() {
             <RailSection title="Connect">
               <MaskedSnippet
                 label="Playwright"
-                text={`ws://${typeof window !== "undefined" ? window.location.host : "host"}/playwright/${name}?token=${token}`}
+                text={`${wsOrigin}/playwright/${name}?token=${token}`}
                 secretValue={token}
               />
               <MaskedSnippet
                 label="Scrape"
-                text={`curl -X POST http://${typeof window !== "undefined" ? window.location.host : "host"}/api/v1/scrape \\\n  -H "Authorization: Bearer ${token}" \\\n  -H "Content-Type: application/json" \\\n  -d '{"profile":"${name}","url":"https://example.com"}'`}
+                text={`curl -X POST ${httpOrigin}/api/v1/scrape \\\n  -H "Authorization: Bearer ${token}" \\\n  -H "Content-Type: application/json" \\\n  -d '{"profile":"${name}","url":"https://example.com"}'`}
                 secretValue={token}
               />
             </RailSection>
