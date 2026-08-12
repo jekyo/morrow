@@ -115,4 +115,69 @@ Everything you do — logins, cookies, storage — lands in the profile and is
 still there tomorrow. Client playwright version must match the server's
 major.minor (currently 1.60.x).
 
+## MCP
+
+Morrow serves an MCP server over streamable HTTP at `/mcp`, gated by the same
+`MORROW_API_KEY` (bearer header or `?token=`). Point any MCP client at
+`http://host:3000/mcp`:
+
+```json
+{
+  "mcpServers": {
+    "morrow": {
+      "url": "http://localhost:3000/mcp",
+      "headers": {
+        "Authorization": "Bearer YOUR_MORROW_API_KEY"
+      }
+    }
+  }
+}
+```
+
+(Claude Desktop-style `mcpServers` config, `type: "http"` — check your
+client's docs for the exact key names it expects for a remote streamable-HTTP
+server vs. a local stdio one; the URL + bearer header above are the two things
+every client needs.)
+
+The transport is stateless — no session ID, no server-initiated stream — one
+request in, one response out. That's a deliberate simplification, not a
+limitation: **Morrow's persistence story is the browser, not the MCP
+session.** Every tool call that touches a page auto-starts the target profile
+if it's stopped and then acts on that profile's *already-running* browser, so
+state (cookies, logins, local storage, open tabs) survives across separate
+tool calls, separate MCP sessions, even server restarts — the same profile an
+agent navigated and logged into an hour ago is still logged in now.
+
+This is the differentiator over a stock browser-automation MCP server: those
+spin up a throwaway browser per session (or per call) with a blank profile.
+Morrow's tools act *inside* a persistent, optionally human-authenticated
+identity — an agent can pick up exactly where a human (or an earlier agent
+run) left off, with no cookie/session handoff required.
+
+13 tools, all thin wrappers over the same `ProfileManager` / scrape code the
+REST API and dashboard use:
+
+| Tool | What it does |
+| --- | --- |
+| `list_profiles` | List all profiles and their status |
+| `create_profile` | Create a new profile (`name`, optional `proxy`/`locale`/`timezone`) |
+| `start_profile` | Start a profile's browser |
+| `stop_profile` | Stop a profile's browser (flushes state to disk) |
+| `navigate` | Navigate the profile's active page to a URL |
+| `snapshot` | Compact accessibility-tree snapshot of the current page — the agent-friendly view |
+| `click` | Click an element matching a selector |
+| `type` | Fill an input (optionally submit with Enter) |
+| `press_key` | Press a keyboard key |
+| `scroll` | Scroll the page by dx/dy pixels |
+| `wait_for` | Wait for a selector to appear |
+| `screenshot` | Screenshot the current page as a PNG image |
+| `scrape` | Scrape the current page (or a given url) into markdown/text/article |
+
+All page-control tools take a `profile` argument and act on that profile's
+active page, auto-starting it if it's stopped — so a single agent
+conversation can `create_profile`, `navigate` to a login page, and (via the
+dashboard's human takeover, or by driving `click`/`type` itself) authenticate
+once, then keep calling `navigate`/`scrape`/`screenshot` against that same
+logged-in identity indefinitely.
+
 Docs: `docs/` — vision, v1 spec, UI spec, design system.
