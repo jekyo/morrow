@@ -9,4 +9,10 @@ describe("globalSingleton", () => {
     expect(a).toBe(b);
     expect(calls).toBe(1);
   });
+
+  it("sees a replaced globalThis.__morrow store", () => {
+    globalSingleton("reset-key", () => "first");
+    (globalThis as Record<string, unknown>).__morrow = {};
+    expect(globalSingleton("reset-key", () => "second")).toBe("second");
+  });
 });
