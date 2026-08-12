@@ -52,7 +52,10 @@ export default function LoginPage() {
 
         <form onSubmit={onSubmit} className="border-neutral bg-base-200 rounded-lg border p-6">
           <h1 className="text-base-content text-lg font-semibold">Connect</h1>
-          <p className="text-secondary mt-1 text-sm">Enter your API key to open the dashboard.</p>
+          <p className="text-secondary mt-1 text-sm">
+            Enter your API key to open the dashboard. If you didn&apos;t set one, Morrow generated a key on first
+            start — check the server console/logs.
+          </p>
 
           <label htmlFor="api-key" className="text-secondary mt-6 block font-mono text-[11px] tracking-[0.15em] uppercase">
             API key
