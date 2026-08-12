@@ -20,14 +20,24 @@ async function main() {
   const app = next({ dev, port: cfg.port });
   const handleRequest = app.getRequestHandler();
   await app.prepare();
+  // Next's own upgrade handling (dev-mode HMR websocket, etc). Any ws upgrade
+  // that isn't a Morrow route falls through to this instead of being killed —
+  // see the comment on createUpgradeHandler.
+  const nextUpgradeHandler = app.getUpgradeHandler();
 
   const server = createServer((req, res) => handleRequest(req, res));
   server.on(
     "upgrade",
-    createUpgradeHandler(cfg, {
-      playwright: playwrightAttachHandler(defaultAttachDeps()),
-      viewer: viewerHandler(defaultViewerDeps()),
-    })
+    createUpgradeHandler(
+      cfg,
+      {
+        playwright: playwrightAttachHandler(defaultAttachDeps()),
+        viewer: viewerHandler(defaultViewerDeps()),
+      },
+      (req, socket, head) => {
+        void nextUpgradeHandler(req, socket, head);
+      }
+    )
   );
 
   server.listen(cfg.port, () => {
