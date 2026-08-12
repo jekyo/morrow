@@ -1,12 +1,34 @@
 "use client";
 
-import { useState, type FormEvent } from "react";
+import { useRef, useState, type FormEvent, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
+import { Apple, Loader2, Monitor } from "lucide-react";
 import { Modal } from "@/components/Modal";
 import { ApiClientError } from "@/lib/api";
 import { useClient } from "@/lib/useApi";
 
 const NAME_PATTERN = /^[a-z0-9][a-z0-9-]{0,62}$/;
+
+const OS_OPTIONS: { value: "windows" | "macos" | "linux"; label: string }[] = [
+  { value: "windows", label: "Windows" },
+  { value: "macos", label: "macOS" },
+  { value: "linux", label: "Linux" },
+];
+
+interface ProxyCheckResult {
+  ip: string;
+  country: string;
+  city: string | null;
+  timezone: string;
+  locale: string;
+  rotating: boolean;
+}
+
+type ProxyCheckState =
+  | { status: "idle" }
+  | { status: "loading" }
+  | { status: "success"; result: ProxyCheckResult }
+  | { status: "error" };
 
 const LOCALES = [
   { value: "", label: "Auto (from IP)" },
@@ -50,11 +72,30 @@ export function CreateProfileModal({ onClose }: { onClose: () => void }) {
   const [locale, setLocale] = useState("");
   const [timezone, setTimezone] = useState("");
   const [viewport, setViewport] = useState("");
+  const [os, setOs] = useState<"windows" | "macos" | "linux">("windows");
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const [proxyCheck, setProxyCheck] = useState<ProxyCheckState>({ status: "idle" });
+  const proxyCheckSeq = useRef(0);
+
   const nameTouched = name.length > 0;
   const nameValid = NAME_PATTERN.test(name);
+
+  async function runProxyCheck(value: string) {
+    const proxyValue = value.trim();
+    if (!proxyValue || !client) return;
+    const seq = ++proxyCheckSeq.current;
+    setProxyCheck({ status: "loading" });
+    try {
+      const result = (await client.post("/proxy/check", { proxy: proxyValue })) as ProxyCheckResult;
+      if (seq !== proxyCheckSeq.current) return;
+      setProxyCheck({ status: "success", result });
+    } catch {
+      if (seq !== proxyCheckSeq.current) return;
+      setProxyCheck({ status: "error" });
+    }
+  }
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
@@ -65,6 +106,7 @@ export function CreateProfileModal({ onClose }: { onClose: () => void }) {
       const preset = VIEWPORTS.find((v) => v.value === viewport);
       await client.post("/profiles", {
         name,
+        os,
         ...(proxy.trim() ? { proxy: proxy.trim() } : {}),
         ...(locale ? { locale } : {}),
         ...(timezone ? { timezone } : {}),
@@ -94,15 +136,63 @@ export function CreateProfileModal({ onClose }: { onClose: () => void }) {
           />
         </Field>
 
-        <Field label="Proxy (optional)">
+        <Field
+          label="Proxy (optional)"
+          action={
+            proxy.trim() ? (
+              <button
+                type="button"
+                onClick={() => runProxyCheck(proxy)}
+                disabled={proxyCheck.status === "loading"}
+                className="text-secondary hover:text-primary font-mono text-[11px] tracking-[0.1em] uppercase disabled:opacity-50"
+              >
+                {proxyCheck.status === "loading" ? "Checking…" : "Check"}
+              </button>
+            ) : undefined
+          }
+        >
           <input
             value={proxy}
-            onChange={(e) => setProxy(e.target.value)}
+            onChange={(e) => {
+              setProxy(e.target.value);
+              setProxyCheck({ status: "idle" });
+            }}
+            onBlur={() => proxy.trim() && runProxyCheck(proxy)}
             placeholder="user:pass@host:port"
             spellCheck={false}
             autoComplete="off"
             className="input border-neutral bg-base-100 focus:border-primary w-full font-mono focus:outline-none"
           />
+          <div aria-live="polite">
+            {proxyCheck.status === "loading" && (
+              <p className="text-secondary mt-1.5 flex items-center gap-1.5 font-mono text-[11px]">
+                <Loader2 size={12} className="animate-spin" aria-hidden />
+                checking…
+              </p>
+            )}
+            {proxyCheck.status === "success" && (
+              <p className="text-secondary mt-1.5 flex flex-wrap items-center gap-x-1.5 gap-y-1 font-mono text-[11px]">
+                <span className="text-success" aria-hidden>
+                  ●
+                </span>
+                <span>{proxyCheck.result.ip}</span>
+                <span aria-hidden>·</span>
+                <span>{[proxyCheck.result.city, proxyCheck.result.country].filter(Boolean).join(", ")}</span>
+                <span aria-hidden>·</span>
+                <span>{proxyCheck.result.timezone}</span>
+                {proxyCheck.result.rotating && (
+                  <span className="text-warning border-warning/40 bg-warning/10 ml-1 rounded px-1.5 py-0.5 text-[10px] tracking-[0.06em] uppercase">
+                    rotating — WebRTC will be blocked
+                  </span>
+                )}
+              </p>
+            )}
+            {proxyCheck.status === "error" && (
+              <p className="text-error mt-1.5 text-[11px]" role="alert">
+                Could not reach the proxy.
+              </p>
+            )}
+          </div>
         </Field>
 
         <div className="grid grid-cols-2 gap-4">
@@ -148,12 +238,33 @@ export function CreateProfileModal({ onClose }: { onClose: () => void }) {
               ))}
             </select>
           </Field>
-          <Field label="Browser">
-            <select disabled value="camoufox" className="select border-neutral bg-base-100/60 w-full opacity-70">
-              <option value="camoufox">Camoufox</option>
+          <Field
+            label={
+              <span className="inline-flex items-center gap-1.5">
+                {os === "macos" ? <Apple size={12} aria-hidden /> : <Monitor size={12} aria-hidden />}
+                OS
+              </span>
+            }
+          >
+            <select
+              value={os}
+              onChange={(e) => setOs(e.target.value as "windows" | "macos" | "linux")}
+              className="select border-neutral bg-base-100 focus:border-primary w-full focus:outline-none"
+            >
+              {OS_OPTIONS.map((o) => (
+                <option key={o.value} value={o.value}>
+                  {o.label}
+                </option>
+              ))}
             </select>
           </Field>
         </div>
+
+        <Field label="Browser Engine" caption="Firefox-based, anti-detect — Camoufox is the only supported engine">
+          <select disabled value="camoufox" className="select border-neutral bg-base-100/60 w-full opacity-70">
+            <option value="camoufox">Camoufox</option>
+          </select>
+        </Field>
 
         {error && (
           <p className="text-error text-sm" role="alert">
@@ -174,12 +285,28 @@ export function CreateProfileModal({ onClose }: { onClose: () => void }) {
   );
 }
 
-function Field({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
+function Field({
+  label,
+  hint,
+  caption,
+  action,
+  children,
+}: {
+  label: ReactNode;
+  hint?: string;
+  caption?: string;
+  action?: ReactNode;
+  children: ReactNode;
+}) {
   return (
     <label className="block">
-      <span className="text-secondary block font-mono text-[11px] tracking-[0.15em] uppercase">{label}</span>
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-secondary font-mono text-[11px] tracking-[0.15em] uppercase">{label}</span>
+        {action}
+      </div>
       <div className="mt-1.5">{children}</div>
       {hint && <span className="text-error mt-1 block text-[11px]">{hint}</span>}
+      {caption && <span className="text-secondary/70 mt-1 block text-[11px]">{caption}</span>}
     </label>
   );
 }
