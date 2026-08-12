@@ -251,6 +251,8 @@ export function config(): Config {
 - Create: `src/server/browser/runtime.ts`, `src/server/browser/camoufox.ts`
 - Test: `tests/unit/camoufox-options.test.ts`
 
+**Amendment (2026-08-12, post-spike):** the runtime launches a **browser server** with the undocumented-but-verified `_userDataDir` + `_sharedBrowser: true` options (see `docs/notes/attach-spike.md`) instead of an in-process `Camoufox({user_data_dir})`. Same persistence (spike-verified on the same profile dir), but the browser exposes a ws endpoint that Plan 3's attach passthrough and Morrow's internal automation both use. Pin `playwright-core` to the exact installed version via package.json `overrides` (undocumented API — a silent minor bump must not be possible; read the exact version from `node_modules/playwright-core/package.json`).
+
 - [ ] **Step 1: Interface `src/server/browser/runtime.ts`** (no test — types only):
 
 ```ts
@@ -258,7 +260,10 @@ import type { BrowserContext } from "playwright-core";
 import type { Profile } from "@/server/db";
 
 export interface RunningBrowser {
+  /** The profile's persistent context (shared default context of the browser server). */
   context: BrowserContext;
+  /** Playwright ws endpoint serving this persistent context (Plan 3 attach). */
+  wsEndpoint: string;
   /** Resolves when the browser exits — graceful close or crash alike. */
   closed: Promise<void>;
   close(): Promise<void>;
@@ -285,9 +290,11 @@ const base: Profile = {
 };
 
 describe("buildCamoufoxOptions", () => {
-  it("always sets persistent dir, headless and fingerprint", () => {
+  it("always sets shared persistent server dir, headless and fingerprint", () => {
     const o = buildCamoufoxOptions(base, { profileDir: "/data/profiles/prof_x", fingerprint: { f: 1 } });
-    expect(o.user_data_dir).toBe("/data/profiles/prof_x");
+    expect(o._userDataDir).toBe("/data/profiles/prof_x");
+    expect(o._sharedBrowser).toBe(true);
+    expect("user_data_dir" in o).toBe(false);
     expect(o.headless).toBe(true);
     expect(o.fingerprint).toEqual({ f: 1 });
   });
@@ -315,18 +322,25 @@ describe("buildCamoufoxOptions", () => {
 - [ ] **Step 4: Implement `src/server/browser/camoufox.ts`:**
 
 ```ts
-import { Camoufox } from "camoufox-js";
+import { launchServer } from "camoufox-js";
 import { generateFingerprint } from "camoufox-js/dist/fingerprints.js";
+import { firefox } from "playwright-core";
 import type { Profile } from "@/server/db";
 import type { BrowserRuntime, RunningBrowser } from "@/server/browser/runtime";
 
-/** Everything Camoufox needs to resurrect this exact browser identity. */
+/**
+ * Everything Camoufox/playwright need to resurrect this exact browser identity
+ * as a shared persistent browser server (see docs/notes/attach-spike.md —
+ * _userDataDir/_sharedBrowser are non-public playwright options, verified and
+ * pinned via package.json overrides).
+ */
 export function buildCamoufoxOptions(
   profile: Profile,
   opts: { profileDir: string; fingerprint: unknown }
 ): Record<string, unknown> {
   const o: Record<string, unknown> = {
-    user_data_dir: opts.profileDir,
+    _userDataDir: opts.profileDir,
+    _sharedBrowser: true,
     fingerprint: opts.fingerprint,
     headless: true,
     // Camoufox handles cache persistence inside the profile dir
@@ -349,23 +363,34 @@ export class CamoufoxRuntime implements BrowserRuntime {
   }
 
   async start(profile: Profile, opts: { profileDir: string; fingerprint: unknown }): Promise<RunningBrowser> {
-    const context = await Camoufox({
-      ...buildCamoufoxOptions(profile, opts),
-      user_data_dir: opts.profileDir,
-    } as Parameters<typeof Camoufox>[0]);
+    const server = await launchServer(
+      buildCamoufoxOptions(profile, opts) as Parameters<typeof launchServer>[0]
+    );
+    const wsEndpoint = server.wsEndpoint();
+    // Morrow's own handle on the shared persistent context — a stock client
+    // connection, exactly like an external attach client will be in Plan 3.
+    const internal = await firefox.connect(wsEndpoint);
+    const context = internal.contexts()[0];
+    if (!context) {
+      await server.close().catch(() => {});
+      throw new Error("browser server exposed no shared context — _sharedBrowser regression, see attach-spike.md");
+    }
     let resolveClosed!: () => void;
     const closed = new Promise<void>((r) => (resolveClosed = r));
-    context.on("close", resolveClosed);
+    server.on("close", resolveClosed);
     return {
       context,
+      wsEndpoint,
       closed,
       close: async () => {
-        await context.close().catch(() => {});
+        await server.close().catch(() => {});
       },
     };
   }
 }
 ```
+
+Also in this step: pin playwright-core — read the exact version from `node_modules/playwright-core/package.json` and add to package.json: `"overrides": { "playwright-core": "<that exact version>" }`, then `npm install` to settle the lockfile.
 
 Adaptation notes for the implementer: (a) verify the deep import path `camoufox-js/dist/fingerprints.js` resolves (package has no exports map restriction — check `node_modules/camoufox-js/package.json`; if it does restrict, import `generateFingerprint` however the package allows and report); (b) `generateFingerprint`'s second arg type is `Partial<FingerprintGeneratorOptions>` — if `operatingSystems: ["linux"]` doesn't typecheck, check the fingerprint-generator types for the correct field (it may be `operatingSystems: [OperatingSystemsName.linux]` or plain strings) and adapt; (c) `Camoufox()` with `user_data_dir` returns `BrowserContext` per its types — if TS needs the generic hint, use `Camoufox<string>(...)`.
 
@@ -402,6 +427,7 @@ function fakeRuntime(behavior?: { failStart?: boolean; hang?: boolean }) {
       started.push(handle);
       return {
         context: {} as RunningBrowser["context"],
+        wsEndpoint: "ws://fake",
         closed,
         close: async () => resolveClosed(),
       };
@@ -986,7 +1012,7 @@ function fakeRuntime(): BrowserRuntime {
     async start(): Promise<RunningBrowser> {
       let resolveClosed!: () => void;
       const closed = new Promise<void>((r) => (resolveClosed = r));
-      return { context: {} as RunningBrowser["context"], closed, close: async () => resolveClosed() };
+      return { context: {} as RunningBrowser["context"], wsEndpoint: "ws://fake", closed, close: async () => resolveClosed() };
     },
   };
 }
