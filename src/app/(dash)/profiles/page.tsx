@@ -85,7 +85,9 @@ export default function ProfilesPage() {
         </p>
       )}
 
-      <div className="border-neutral bg-base-200 mt-6 overflow-hidden rounded-lg border">
+      {/* No overflow-hidden here: it would clip the row action dropdowns.
+          Rounded corners come from the border alone. */}
+      <div className="border-neutral bg-base-200 mt-6 rounded-lg border">
         {loading ? (
           <SkeletonRows />
         ) : filtered.length === 0 ? (

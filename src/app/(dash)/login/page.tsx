@@ -35,8 +35,17 @@ export default function LoginPage() {
   }
 
   return (
-    <main className="bg-base-100 flex min-h-screen items-center justify-center px-6">
-      <div className="w-full max-w-sm">
+    <main className="bg-base-100 relative flex min-h-screen items-center justify-center overflow-hidden px-6">
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-0 bg-cover bg-center opacity-60"
+        style={{ backgroundImage: "url(/background.png)" }}
+      />
+      <div
+        aria-hidden
+        className="from-base-100/30 via-base-100/60 to-base-100 pointer-events-none absolute inset-0 bg-gradient-to-b"
+      />
+      <div className="relative w-full max-w-sm">
         <div className="mb-8 flex items-center justify-center">
           <Logo size={40} />
         </div>
