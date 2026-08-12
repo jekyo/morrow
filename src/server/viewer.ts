@@ -1,4 +1,5 @@
 import { ControlLock } from "@/server/lock";
+import { globalSingleton } from "@/server/global";
 
 export interface ViewerPage {
   screenshot(opts?: { type?: "jpeg"; quality?: number }): Promise<Buffer>;
@@ -86,4 +87,27 @@ export class ViewerHub {
       else if (msg.action === "press") await this.page.keyboard.press(msg.key);
     }
   }
+}
+
+/**
+ * Hub registry keyed by profile id. Lives on globalThis so the custom server
+ * and Next's route bundles share one hub per running profile (see global.ts).
+ */
+const hubs = () => globalSingleton("viewerHubs", () => new Map<string, ViewerHub>());
+
+export function getOrCreateHub(profileId: string, page: ViewerPage, fps = 10): ViewerHub {
+  const map = hubs();
+  let hub = map.get(profileId);
+  if (!hub) {
+    hub = new ViewerHub(page, { fps });
+    map.set(profileId, hub);
+  }
+  return hub;
+}
+
+/** Stop and forget a profile's hub — called when the profile stops or crashes. */
+export function dropHub(profileId: string): void {
+  const map = hubs();
+  map.get(profileId)?.stop();
+  map.delete(profileId);
 }

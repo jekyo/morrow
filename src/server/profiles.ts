@@ -8,6 +8,7 @@ import { ApiError } from "@/server/errors";
 import { globalSingleton } from "@/server/global";
 import type { BrowserRuntime, RunningBrowser } from "@/server/browser/runtime";
 import { CamoufoxRuntime } from "@/server/browser/camoufox";
+import { dropHub } from "@/server/viewer";
 
 export interface RunningProfile {
   profile: Profile;
@@ -98,6 +99,7 @@ export class ProfileManager {
       this.db.recordEvent(profile.id, "profile.started");
 
       void browser.closed.then(() => {
+        dropHub(profile.id); // the page is gone — tear the screencast loop down
         if (this.running.delete(profile.id) && !this.stopping.has(profile.id)) {
           this.db.setProfileStatus(profile.id, "stopped");
           this.db.recordEvent(profile.id, "profile.crashed");
@@ -122,6 +124,7 @@ export class ProfileManager {
     if (!rp) return; // already stopped — idempotent
     this.stopping.add(profile.id);
     this.db.setProfileStatus(profile.id, "stopping");
+    dropHub(profile.id); // stop screencasting before the pages go away
     try {
       await rp.browser.close();
       await rp.browser.closed;
@@ -131,6 +134,18 @@ export class ProfileManager {
       this.db.setProfileStatus(profile.id, "stopped");
       this.db.recordEvent(profile.id, "profile.stopped");
     }
+  }
+
+  /**
+   * The page the viewer streams: the persistent context's first page, or a
+   * fresh one if the context has none. Multi-tab selection is deferred (Plan 5
+   * scope note) — v1 shows the first page only.
+   */
+  async activePage(name: string) {
+    const rp = this.running.get(this.mustGet(name).id);
+    if (!rp) throw new ApiError("profile_not_stopped", `Profile ${name} is not running`, 409);
+    const pages = rp.browser.context.pages();
+    return pages[0] ?? (await rp.browser.context.newPage());
   }
 
   private profileDir(profileId: string): string {

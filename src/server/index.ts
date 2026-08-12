@@ -5,6 +5,7 @@ import { config } from "@/server/config";
 import { getDb } from "@/server/db";
 import { createUpgradeHandler } from "@/server/ws";
 import { playwrightAttachHandler, defaultAttachDeps } from "@/server/attach";
+import { viewerHandler, defaultViewerDeps } from "@/server/viewer-handler";
 
 const dev = process.env.NODE_ENV !== "production";
 
@@ -21,7 +22,13 @@ async function main() {
   await app.prepare();
 
   const server = createServer((req, res) => handleRequest(req, res));
-  server.on("upgrade", createUpgradeHandler(cfg, { playwright: playwrightAttachHandler(defaultAttachDeps()) }));
+  server.on(
+    "upgrade",
+    createUpgradeHandler(cfg, {
+      playwright: playwrightAttachHandler(defaultAttachDeps()),
+      viewer: viewerHandler(defaultViewerDeps()),
+    })
+  );
 
   server.listen(cfg.port, () => {
     console.log(`morrow listening on :${cfg.port} (data: ${cfg.dataDir})`);
