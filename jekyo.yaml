@@ -3,10 +3,10 @@ description: Persistent browser infrastructure — browsers that remember.
 
 services:
   morrow:
-    image: ghcr.io/jekyo/morrow:1.0.0   # bump tag per release
+    image: ghcr.io/jekyo/morrow:1.1.0   # bump tag per release
     port: 3000
     http:
-      domain: morrow.example.com        # replace with your domain
+      domain: morrow.jekyo.app
     env:
       MORROW_API_KEY: ${MORROW_API_KEY}
     health:
