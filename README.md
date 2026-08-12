@@ -35,6 +35,50 @@ Stop it (flushes browser state to disk):
 
 Profile state (cookies, storage, logins) persists on disk across restarts, so stopping and starting the same profile resumes exactly where it left off.
 
+## Scraping
+
+Browserless-style HTTP endpoints for one-shot page work — screenshots, raw HTML,
+and cleaned markdown/article extraction. All requests need
+`Authorization: Bearer $MORROW_API_KEY` and a `url` or `html` target.
+
+Get markdown from a page:
+
+    curl -X POST http://localhost:3000/api/v1/scrape \
+      -H "Authorization: Bearer $MORROW_API_KEY" \
+      -H "Content-Type: application/json" \
+      -d '{"url": "https://example.com", "format": "markdown"}'
+
+`format` also accepts `text` (plain innerText) and `article` (Readability
+title/byline/excerpt/content/text plus a markdown rendering).
+
+Take a screenshot:
+
+    curl -X POST http://localhost:3000/api/v1/screenshot \
+      -H "Authorization: Bearer $MORROW_API_KEY" \
+      -H "Content-Type: application/json" \
+      -d '{"url": "https://example.com", "fullPage": true}' \
+      -o screenshot.png
+
+Get the rendered HTML:
+
+    curl -X POST http://localhost:3000/api/v1/content \
+      -H "Authorization: Bearer $MORROW_API_KEY" \
+      -H "Content-Type: application/json" \
+      -d '{"url": "https://example.com"}'
+
+Add `"profile": "research-eu"` to any of the three requests to run the scrape
+inside that profile's persistent, logged-in browser context instead of a
+throwaway one — no cookie or session management required for sites you're
+already authenticated with.
+
+All three also accept page options: `gotoOptions`, `waitForSelector`,
+`waitForTimeout`, `waitForFunction`, `viewport`, `rejectResourceTypes`,
+`rejectRequestPattern`, `setExtraHTTPHeaders`, `bestAttempt`.
+
+Full request/response shapes are documented at `/api-docs` (a themed Swagger
+UI), backed by an OpenAPI 3 document at `/api/v1/openapi.json` — point any
+OpenAPI client generator at it to produce a typed SDK.
+
 ## Connect with Playwright
 
 Any stock Playwright (>= matching 1.60.x) attaches straight to a profile's
