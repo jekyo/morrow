@@ -58,7 +58,15 @@ export class ViewerHub {
     try {
       const data = await this.page.screenshot({ type: "jpeg", quality: this.opts.quality ?? 60 });
       const frame: Frame = { data, url: this.page.url(), seq: ++this.seq };
-      for (const fn of this.subs) fn(frame);
+      // Fan-out is isolated: one bad consumer (e.g. ws.send on a socket that
+      // just closed) must not starve the others or kill the loop.
+      for (const fn of this.subs) {
+        try {
+          fn(frame);
+        } catch {
+          // dead subscriber — it unsubscribes on its own close handler
+        }
+      }
     } catch {
       // transient (page navigating/closing) — skip this frame
     } finally {

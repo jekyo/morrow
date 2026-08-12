@@ -70,4 +70,16 @@ describe("ViewerHub", () => {
     expect(meta).toBe("https://x.com/home");
     hub.stop();
   });
+
+  it("keeps delivering to healthy subscribers when one throws", async () => {
+    const { page } = fakePage();
+    const hub = new ViewerHub(page, { fps: 10 });
+    const healthy: number[] = [];
+    hub.subscribe(() => { throw new Error("socket gone"); }); // e.g. ws.send on a closing socket
+    hub.subscribe((f) => healthy.push(f.seq));
+    hub.start();
+    await vi.advanceTimersByTimeAsync(350);
+    expect(healthy.length).toBeGreaterThanOrEqual(3);
+    hub.stop();
+  });
 });
