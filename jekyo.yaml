@@ -2,7 +2,11 @@ app: morrow
 description: Persistent browser infrastructure — browsers that remember.
 
 services:
-  morrow:
+  # Named "web", not "morrow": Kubernetes injects <SERVICE>_PORT service-
+  # discovery env vars, so a service named "morrow" would set MORROW_PORT to a
+  # tcp:// URL and collide with Morrow's own MORROW_PORT config. "web" avoids the
+  # MORROW_ prefix entirely.
+  web:
     image: ghcr.io/jekyo/morrow:1.1.0   # bump tag per release
     port: 3000
     http:
