@@ -52,25 +52,43 @@ function randomSeeds(): CamoufoxSeeds {
  */
 export function buildCamoufoxOptions(
   profile: Profile,
-  opts: { profileDir: string; fingerprint: unknown }
+  opts: { profileDir: string; fingerprint: unknown; geoip?: boolean }
 ): Record<string, unknown> {
   const stored = opts.fingerprint as StoredFingerprint;
+  // Pins camoufox-js's per-launch audio/canvas/font seeds (see StoredFingerprint above)
+  // so they're identical on every start instead of randomized.
+  const config: Record<string, unknown> = { ...stored.seeds };
   const o: Record<string, unknown> = {
     _userDataDir: opts.profileDir,
     _sharedBrowser: true,
     fingerprint: stored.fingerprint,
-    // Pins camoufox-js's per-launch audio/canvas/font seeds (see StoredFingerprint above)
-    // so they're identical on every start instead of randomized.
-    config: { ...stored.seeds },
+    config,
     headless: true,
     // Camoufox handles cache persistence inside the profile dir
     enable_cache: true,
   };
   if (profile.proxy) o.proxy = profile.proxy;
   if (profile.locale) o.locale = profile.locale;
+  if (profile.timezone) {
+    // Explicit timezone forces the browser clock and disables IP-based geo:
+    // geoip would otherwise overwrite `config.timezone` with the egress-IP zone.
+    config.timezone = profile.timezone;
+  } else if (opts.geoip !== false) {
+    // No explicit timezone → derive timezone, locale, geolocation and WebRTC IP
+    // from the egress IP (through the proxy if set), so the browser's clock and
+    // location stay consistent with its exit IP instead of the container's. This
+    // uses Camoufox's bundled MaxMind GeoLite2 database — no external service.
+    o.geoip = true;
+  }
   if (profile.viewportWidth && profile.viewportHeight)
     o.window = [profile.viewportWidth, profile.viewportHeight];
   return o;
+}
+
+/** Whether a launch error came from geoip's live public-IP lookup failing. */
+export function isGeoipLookupError(err: unknown): boolean {
+  const m = err instanceof Error ? `${err.name}: ${err.message}` : String(err);
+  return /InvalidIP|public .*IP address|geoip/i.test(m);
 }
 
 export class CamoufoxRuntime implements BrowserRuntime {
@@ -87,9 +105,25 @@ export class CamoufoxRuntime implements BrowserRuntime {
   }
 
   async start(profile: Profile, opts: { profileDir: string; fingerprint: unknown }): Promise<RunningBrowser> {
-    const server = await launchServer(
-      buildCamoufoxOptions(profile, opts) as Parameters<typeof launchServer>[0]
-    );
+    let server;
+    try {
+      server = await launchServer(buildCamoufoxOptions(profile, opts) as Parameters<typeof launchServer>[0]);
+    } catch (err) {
+      // geoip does a live public-IP lookup (through the proxy) before the browser
+      // process spawns; if every IP endpoint is unreachable it throws. Don't brick
+      // the profile — retry once without geoip (falls back to the host timezone).
+      if (isGeoipLookupError(err) && !profile.timezone) {
+        console.warn(
+          `geoip lookup failed for profile ${profile.name}, starting without it:`,
+          err instanceof Error ? err.message : err
+        );
+        server = await launchServer(
+          buildCamoufoxOptions(profile, { ...opts, geoip: false }) as Parameters<typeof launchServer>[0]
+        );
+      } else {
+        throw err;
+      }
+    }
     const wsEndpoint = server.wsEndpoint();
     // Morrow's own handle on the shared persistent context — a stock client
     // connection, exactly like an external attach client will be in Plan 3.
@@ -101,6 +135,13 @@ export class CamoufoxRuntime implements BrowserRuntime {
         "browser server exposed no shared context — _sharedBrowser regression, see attach-spike.md"
       );
     }
+    // Best-effort: log the timezone the browser actually resolved to, so the
+    // egress-IP → timezone mapping is observable in the server logs.
+    void context
+      .pages()[0]
+      ?.evaluate(() => Intl.DateTimeFormat().resolvedOptions().timeZone)
+      .then((tz) => console.log(`profile ${profile.name} browser timezone: ${tz}`))
+      .catch(() => {});
     let resolveClosed!: () => void;
     const closed = new Promise<void>((r) => (resolveClosed = r));
     server.on("close", resolveClosed);

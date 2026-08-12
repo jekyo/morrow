@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { buildCamoufoxOptions } from "@/server/browser/camoufox";
+import { buildCamoufoxOptions, isGeoipLookupError } from "@/server/browser/camoufox";
 import { CamoufoxRuntime } from "@/server/browser/camoufox";
 import type { Profile } from "@/server/db";
 
@@ -56,6 +56,29 @@ describe("buildCamoufoxOptions", () => {
     expect("locale" in o).toBe(false);
     expect("window" in o).toBe(false);
   });
+
+  it("enables geoip by default (auto timezone/locale/geo from the egress IP)", () => {
+    const o = buildCamoufoxOptions(base, { profileDir: "/d", fingerprint: storedFingerprint });
+    expect(o.geoip).toBe(true);
+    expect((o.config as Record<string, unknown>).timezone).toBeUndefined();
+  });
+
+  it("an explicit timezone overrides geoip: sets config.timezone and disables geoip", () => {
+    const o = buildCamoufoxOptions(
+      { ...base, timezone: "America/New_York" },
+      { profileDir: "/d", fingerprint: storedFingerprint }
+    );
+    expect("geoip" in o).toBe(false);
+    expect((o.config as Record<string, unknown>).timezone).toBe("America/New_York");
+    // seeds are still pinned alongside the timezone
+    expect((o.config as Record<string, unknown>)["audio:seed"]).toBe(111);
+  });
+
+  it("geoip: false disables geoip without forcing a timezone (the fallback path)", () => {
+    const o = buildCamoufoxOptions(base, { profileDir: "/d", fingerprint: storedFingerprint, geoip: false });
+    expect("geoip" in o).toBe(false);
+    expect((o.config as Record<string, unknown>).timezone).toBeUndefined();
+  });
 });
 
 describe("CamoufoxRuntime.generateFingerprint", () => {
@@ -79,6 +102,19 @@ describe("CamoufoxRuntime.generateFingerprint", () => {
     const a = runtime.generateFingerprint(base) as { seeds: Record<string, number> };
     const b = runtime.generateFingerprint(base) as { seeds: Record<string, number> };
     expect(a.seeds).not.toEqual(b.seeds);
+  });
+});
+
+describe("isGeoipLookupError", () => {
+  it("matches camoufox's public-IP lookup failure", () => {
+    expect(isGeoipLookupError(new Error("Failed to get a public proxy IP address from any API endpoint."))).toBe(true);
+    const e = new Error("boom");
+    e.name = "InvalidIP";
+    expect(isGeoipLookupError(e)).toBe(true);
+  });
+  it("does not match unrelated launch errors", () => {
+    expect(isGeoipLookupError(new Error("browser exited with code 1"))).toBe(false);
+    expect(isGeoipLookupError(undefined)).toBe(false);
   });
 });
 

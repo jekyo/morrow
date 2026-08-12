@@ -110,6 +110,14 @@ fewer CAPTCHAs than stock headless browsers, especially on sites you've already
 logged into with that profile. Add a residential proxy per profile
 (`"proxy"` on create) and the network origin lines up with the identity too.
 
+**Timezone and geolocation follow the exit IP automatically.** Leave a
+profile's `timezone`/`locale` unset and Morrow derives the browser's timezone,
+locale, geolocation, and WebRTC IP from the egress IP — through the proxy if
+one is set — using Camoufox's bundled GeoLite2 database (no external service).
+So a profile on a New York proxy reports `America/New_York` and US geolocation,
+with no clock/IP mismatch for detectors to catch. Set `timezone` explicitly to
+override (which disables the IP-based geolocation for that profile).
+
 **Honest scope:** Morrow does not *solve* CAPTCHAs, and no anti-detection tool
 is a guarantee against a determined, well-resourced detector. What it does is
 remove the cheap, obvious tells and present a stable, human-shaped identity —

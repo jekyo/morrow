@@ -66,6 +66,17 @@ export default function StealthPage() {
         </P>
       </DocsSection>
 
+      <DocsSection title="Timezone & geolocation follow the exit IP">
+        <P>
+          Leave a profile&apos;s timezone and locale unset and Morrow derives the browser&apos;s timezone, locale,
+          geolocation, and WebRTC IP from the egress IP — through the proxy if one is set — using Camoufox&apos;s
+          bundled GeoLite2 database (no external service). A profile on a New York proxy reports{" "}
+          <code className="font-mono text-[13px]">America/New_York</code> and US geolocation, with no clock/IP
+          mismatch for detectors to catch. Set a timezone explicitly to override, which disables IP-based
+          geolocation for that profile.
+        </P>
+      </DocsSection>
+
       <Callout title="Honest scope">
         Morrow does not <em>solve</em> CAPTCHAs, and no anti-detection tool is a guarantee against a determined,
         well-resourced detector. What it does is remove the cheap, obvious tells and present a stable, human-shaped

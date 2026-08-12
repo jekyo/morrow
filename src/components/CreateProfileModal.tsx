@@ -9,7 +9,7 @@ import { useClient } from "@/lib/useApi";
 const NAME_PATTERN = /^[a-z0-9][a-z0-9-]{0,62}$/;
 
 const LOCALES = [
-  { value: "", label: "Auto (system default)" },
+  { value: "", label: "Auto (from IP)" },
   { value: "en-US", label: "en-US — English (US)" },
   { value: "en-GB", label: "en-GB — English (UK)" },
   { value: "de-DE", label: "de-DE — German" },
@@ -21,7 +21,7 @@ const LOCALES = [
 ];
 
 const TIMEZONES = [
-  { value: "", label: "Auto (system default)" },
+  { value: "", label: "Auto (from IP)" },
   { value: "UTC", label: "UTC" },
   { value: "America/New_York", label: "America/New_York" },
   { value: "America/Chicago", label: "America/Chicago" },
