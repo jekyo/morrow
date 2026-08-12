@@ -1,5 +1,6 @@
 import Database from "better-sqlite3";
 import { randomBytes } from "node:crypto";
+import { globalSingleton } from "@/server/global";
 
 export type ProfileStatus = "stopped" | "starting" | "running" | "stopping";
 
@@ -244,9 +245,7 @@ export function openDb(path: string): MorrowDb {
   return new MorrowDb(path);
 }
 
-let singleton: MorrowDb | undefined;
 /** Process-wide database, stored at <dataDir>/morrow.db. */
 export function getDb(dataDir: string): MorrowDb {
-  singleton ??= new MorrowDb(`${dataDir}/morrow.db`);
-  return singleton;
+  return globalSingleton("db", () => new MorrowDb(`${dataDir}/morrow.db`));
 }

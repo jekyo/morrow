@@ -1,3 +1,5 @@
+import { globalSingleton } from "@/server/global";
+
 export interface Config {
   apiKey: string;
   port: number;
@@ -28,9 +30,7 @@ export function loadConfig(env: Env = process.env): Config {
   };
 }
 
-let cached: Config | undefined;
 /** Process-wide config (Next route handlers and server modules share it). */
 export function config(): Config {
-  cached ??= loadConfig();
-  return cached;
+  return globalSingleton("config", () => loadConfig());
 }
