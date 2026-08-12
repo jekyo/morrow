@@ -35,4 +35,24 @@ Stop it (flushes browser state to disk):
 
 Profile state (cookies, storage, logins) persists on disk across restarts, so stopping and starting the same profile resumes exactly where it left off. A connect/attach endpoint for driving a running profile with a stock browser client ships in the next release.
 
+## Connect with Playwright
+
+Any stock Playwright (>= matching 1.60.x) attaches straight to a profile's
+persistent browser — the profile auto-starts on connect:
+
+```ts
+import { firefox } from "playwright";
+
+const browser = await firefox.connect(
+  "ws://localhost:3000/playwright/x-marketing?token=" + process.env.MORROW_API_KEY
+);
+const context = browser.contexts()[0]; // the profile's persistent context
+const page = await context.newPage();
+await page.goto("https://x.com");
+```
+
+Everything you do — logins, cookies, storage — lands in the profile and is
+still there tomorrow. Client playwright version must match the server's
+major.minor (currently 1.60.x).
+
 Docs: `docs/` — vision, v1 spec, UI spec, design system.
