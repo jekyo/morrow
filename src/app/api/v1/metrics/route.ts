@@ -34,6 +34,7 @@ export async function GET(req: Request) {
         memory: process.memoryUsage.rss(),
         uptime: process.uptime(),
       },
+      activity: db.activitySeries(7),
     });
   });
 }

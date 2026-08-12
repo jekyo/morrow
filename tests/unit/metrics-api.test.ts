@@ -51,6 +51,32 @@ describe("GET /metrics", () => {
     expect(body.system.uptime).toBeGreaterThanOrEqual(0);
   });
 
+  it("includes a 7-day activity series with zero-filled gaps", async () => {
+    const db = ((globalThis as Record<string, unknown>).__morrow as { db: import("@/server/db").MorrowDb }).db;
+    const p = db.createProfile({ name: "a" });
+    const today = new Date().toISOString().slice(0, 10);
+    db.recordEvent(p.id, "profile.started", undefined, `${today} 08:00:00`);
+    db.recordEvent(p.id, "session.connected", undefined, `${today} 08:01:00`);
+    db.recordEvent(p.id, "session.connected", undefined, `${today} 08:02:00`);
+
+    const { GET } = await import("@/app/api/v1/metrics/route");
+    const res = await GET(new Request("http://x/api/v1/metrics", { headers: auth }));
+    const body = await res.json();
+
+    expect(Array.isArray(body.activity)).toBe(true);
+    expect(body.activity).toHaveLength(7);
+    for (const bucket of body.activity) {
+      expect(bucket).toMatchObject({
+        date: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/),
+        sessions: expect.any(Number),
+        starts: expect.any(Number),
+        total: expect.any(Number),
+      });
+    }
+    const todayBucket = body.activity[body.activity.length - 1];
+    expect(todayBucket).toEqual({ date: today, sessions: 2, starts: 1, total: 3 });
+  });
+
   it("counts running profiles separately from total", async () => {
     const db = ((globalThis as Record<string, unknown>).__morrow as { db: import("@/server/db").MorrowDb }).db;
     const p = db.createProfile({ name: "a" });

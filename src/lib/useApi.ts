@@ -67,11 +67,19 @@ export interface ApiEvent {
   createdAt: string;
 }
 
+export interface ApiActivityBucket {
+  date: string;
+  sessions: number;
+  starts: number;
+  total: number;
+}
+
 export interface ApiMetrics {
   profiles: { total: number; running: number };
   sessions: { active: number };
   scrapes: { total24h: number; failed24h: number };
   system: { memory: number; uptime: number };
+  activity: ApiActivityBucket[];
 }
 
 function errorMessage(err: unknown, fallback: string): string {

@@ -47,3 +47,17 @@ export function formatClockTime(iso: string): string {
   if (Number.isNaN(d.getTime())) return "--:--:--";
   return d.toLocaleTimeString("en-GB", { hour12: false });
 }
+
+/** "YYYY-MM-DD" → "MON" style short weekday label, for chart x-axes (activity series is UTC-bucketed). */
+export function formatDayLabel(dateOnly: string): string {
+  const d = new Date(`${dateOnly}T00:00:00Z`);
+  if (Number.isNaN(d.getTime())) return dateOnly;
+  return d.toLocaleDateString("en-US", { weekday: "short", timeZone: "UTC" }).toUpperCase();
+}
+
+/** "YYYY-MM-DD" → "Sun, Aug 9" style full label, for chart tooltips. */
+export function formatDayDetail(dateOnly: string): string {
+  const d = new Date(`${dateOnly}T00:00:00Z`);
+  if (Number.isNaN(d.getTime())) return dateOnly;
+  return d.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric", timeZone: "UTC" });
+}

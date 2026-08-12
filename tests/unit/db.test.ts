@@ -40,6 +40,52 @@ describe("events", () => {
   });
 });
 
+describe("activitySeries", () => {
+  it("buckets events by day, filling gaps with zero", () => {
+    const p = db.createProfile({ name: "a" });
+    const today = new Date();
+    const todayKey = today.toISOString().slice(0, 10);
+    const yesterday = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate() - 1));
+    const yesterdayKey = yesterday.toISOString().slice(0, 10);
+
+    db.recordEvent(p.id, "session.connected", undefined, `${yesterdayKey} 10:00:00`);
+    db.recordEvent(p.id, "profile.started", undefined, `${yesterdayKey} 10:05:00`);
+    db.recordEvent(p.id, "profile.started", undefined, `${todayKey} 09:00:00`);
+    db.recordEvent(p.id, "session.connected", undefined, `${todayKey} 09:01:00`);
+    db.recordEvent(p.id, "session.connected", undefined, `${todayKey} 09:02:00`);
+    db.recordEvent(p.id, "page.navigation", undefined, `${todayKey} 09:03:00`);
+
+    const series = db.activitySeries(7);
+    expect(series).toHaveLength(7);
+    expect(series[series.length - 1].date).toBe(todayKey);
+    expect(series[series.length - 2].date).toBe(yesterdayKey);
+
+    const yesterdayBucket = series.find((s) => s.date === yesterdayKey)!;
+    expect(yesterdayBucket).toEqual({ date: yesterdayKey, sessions: 1, starts: 1, total: 2 });
+
+    const todayBucket = series.find((s) => s.date === todayKey)!;
+    expect(todayBucket).toEqual({ date: todayKey, sessions: 2, starts: 1, total: 4 });
+
+    // Days with no events are still present, zero-filled — continuous axis.
+    const oldest = series[0];
+    expect(oldest).toEqual({ date: oldest.date, sessions: 0, starts: 0, total: 0 });
+  });
+
+  it("defaults to 7 days and handles a fresh db with no events", () => {
+    const series = db.activitySeries();
+    expect(series).toHaveLength(7);
+    for (const bucket of series) {
+      expect(bucket).toMatchObject({ sessions: 0, starts: 0, total: 0 });
+      expect(bucket.date).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    }
+  });
+
+  it("supports a custom window size", () => {
+    expect(db.activitySeries(1)).toHaveLength(1);
+    expect(db.activitySeries(30)).toHaveLength(30);
+  });
+});
+
 describe("fingerprint", () => {
   it("stores and retrieves fingerprint json", () => {
     const p = db.createProfile({ name: "a" });

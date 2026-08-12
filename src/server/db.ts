@@ -178,10 +178,17 @@ export class MorrowDb {
     this.db.prepare(`UPDATE profiles SET status = 'stopped' WHERE status != 'stopped'`).run();
   }
 
-  recordEvent(profileId: string | null, type: string, data?: unknown): void {
+  /**
+   * `createdAt` is an optional override (SQLite `datetime()`-compatible text,
+   * UTC) used by tests to seed events on specific days; production callers
+   * omit it and get the schema's `datetime('now')` default.
+   */
+  recordEvent(profileId: string | null, type: string, data?: unknown, createdAt?: string): void {
     this.db
-      .prepare(`INSERT INTO events (profile_id, type, data) VALUES (?, ?, ?)`)
-      .run(profileId, type, data === undefined ? null : JSON.stringify(data));
+      .prepare(
+        `INSERT INTO events (profile_id, type, data, created_at) VALUES (?, ?, ?, COALESCE(?, datetime('now')))`
+      )
+      .run(profileId, type, data === undefined ? null : JSON.stringify(data), createdAt ?? null);
   }
 
   listEvents(profileId: string, limit = 200): MorrowEvent[] {
@@ -206,6 +213,36 @@ export class MorrowDb {
       .prepare(`SELECT COUNT(*) AS n FROM events WHERE type LIKE ? AND created_at >= ?`)
       .get(`${prefix}%`, sinceIso) as { n: number };
     return r.n;
+  }
+
+  /**
+   * Event counts bucketed by UTC calendar day for the last `days` days
+   * (oldest first, today last). Days with no events are zero-filled so the
+   * result is a continuous axis for charting.
+   */
+  activitySeries(days = 7): Array<{ date: string; sessions: number; starts: number; total: number }> {
+    const buckets = new Map<string, { sessions: number; starts: number; total: number }>();
+    const today = new Date();
+    for (let i = days - 1; i >= 0; i--) {
+      const d = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate() - i));
+      buckets.set(d.toISOString().slice(0, 10), { sessions: 0, starts: 0, total: 0 });
+    }
+    const oldestKey = buckets.keys().next().value as string;
+    const rows = this.db
+      .prepare(
+        `SELECT date(created_at) AS day,
+                SUM(CASE WHEN type = 'session.connected' THEN 1 ELSE 0 END) AS sessions,
+                SUM(CASE WHEN type = 'profile.started' THEN 1 ELSE 0 END) AS starts,
+                COUNT(*) AS total
+         FROM events
+         WHERE date(created_at) >= ?
+         GROUP BY day`
+      )
+      .all(oldestKey) as Array<{ day: string; sessions: number; starts: number; total: number }>;
+    for (const r of rows) {
+      if (buckets.has(r.day)) buckets.set(r.day, { sessions: r.sessions, starts: r.starts, total: r.total });
+    }
+    return [...buckets.entries()].map(([date, v]) => ({ date, ...v }));
   }
 
   schemaVersion(): number {

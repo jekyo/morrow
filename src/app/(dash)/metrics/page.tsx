@@ -1,7 +1,9 @@
 "use client";
 
-import { formatDuration } from "@/lib/format";
+import { formatDayDetail, formatDayLabel, formatDuration } from "@/lib/format";
 import { useMetrics } from "@/lib/useApi";
+import { AreaChart } from "@/components/charts/AreaChart";
+import { BarChart } from "@/components/charts/BarChart";
 
 export default function MetricsPage() {
   const { metrics, loading, error } = useMetrics();
@@ -44,6 +46,60 @@ export default function MetricsPage() {
               </div>
             ))}
       </div>
+
+      <div className="mt-8 grid grid-cols-1 gap-4 lg:grid-cols-5">
+        <div className="border-neutral bg-base-200 rounded-lg border p-5 lg:col-span-3">
+          <p className="text-secondary font-mono text-[11px] tracking-[0.1em] uppercase">Activity — last 7 days</p>
+          {loading && !metrics ? (
+            <ChartSkeleton />
+          ) : (
+            <div className="mt-4">
+              <AreaChart
+                ariaLabel="Total events per day, last 7 days"
+                unit=" events"
+                points={(metrics?.activity ?? []).map((b) => ({
+                  label: formatDayLabel(b.date),
+                  detail: formatDayDetail(b.date),
+                  value: b.total,
+                }))}
+              />
+            </div>
+          )}
+        </div>
+
+        <div className="border-neutral bg-base-200 rounded-lg border p-5 lg:col-span-2">
+          <p className="text-secondary font-mono text-[11px] tracking-[0.1em] uppercase">Sessions vs starts</p>
+          {loading && !metrics ? (
+            <ChartSkeleton />
+          ) : (
+            <div className="mt-4">
+              <BarChart
+                ariaLabel="Sessions connected and profiles started per day, last 7 days"
+                series={[
+                  { key: "a", label: "Sessions", color: "var(--color-primary)" },
+                  { key: "b", label: "Starts", color: "var(--color-secondary)" },
+                ]}
+                groups={(metrics?.activity ?? []).map((b) => ({
+                  label: formatDayLabel(b.date),
+                  detail: formatDayDetail(b.date),
+                  a: b.sessions,
+                  b: b.starts,
+                }))}
+              />
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ChartSkeleton() {
+  return (
+    <div className="mt-4 flex h-[160px] items-end gap-1">
+      {Array.from({ length: 7 }).map((_, i) => (
+        <div key={i} className="skeleton w-full rounded-sm" style={{ height: `${30 + ((i * 17) % 70)}%` }} />
+      ))}
     </div>
   );
 }
