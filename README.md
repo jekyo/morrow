@@ -12,6 +12,22 @@
 
     docker run -e MORROW_API_KEY=secret -v morrow-data:/data -p 3000:3000 ghcr.io/jekyo/morrow:latest
 
+## Dashboard
+
+Open <http://localhost:3000/> and enter your `MORROW_API_KEY` — it is kept in
+the browser's localStorage and sent with every request, so you only do this
+once per browser.
+
+From there you can create a profile, open it, and start it. The profile page
+embeds a live viewer of the real browser: it streams the page as ~10fps JPEG
+frames over a websocket. Press **Take Control** to drive it — mouse, scroll and
+keyboard go straight to the remote browser, so you can log into a site by hand
+— then **Release** to hand it back to automation. Only one controller at a time;
+the viewer shows whether the profile is `AUTOMATED` or under `HUMAN CONTROL`.
+
+Whatever you do while in control is written to the profile like any other
+session, so a manual login persists for later API and Playwright use.
+
 ## Profiles API
 
 Profiles are persistent Camoufox browser identities: create one, start it, drive it, stop it — cookies, local/session storage and logins are written to disk and are still there next time you start it. All requests need `Authorization: Bearer $MORROW_API_KEY`.
