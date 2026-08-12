@@ -3,10 +3,15 @@ import { openDb, type MorrowDb } from "@/server/db";
 import { ProfileManager } from "@/server/profiles";
 import type { BrowserRuntime, RunningBrowser } from "@/server/browser/runtime";
 
+const FAKE_STORED_FINGERPRINT = {
+  fingerprint: { fake: true },
+  seeds: { "audio:seed": 1, "canvas:seed": 2, "fonts:spacing_seed": 3 },
+};
+
 function fakeRuntime(behavior?: { failStart?: boolean; hang?: boolean }) {
   const started: { close: () => void }[] = [];
   const runtime: BrowserRuntime = {
-    generateFingerprint: () => ({ fake: true }),
+    generateFingerprint: () => FAKE_STORED_FINGERPRINT,
     async start(): Promise<RunningBrowser> {
       if (behavior?.failStart) throw new Error("boom: no display");
       if (behavior?.hang) await new Promise(() => {});
@@ -39,18 +44,28 @@ describe("ProfileManager", () => {
     const p = db.createProfile({ name: "a" });
     await pm.start("a");
     expect(db.getProfileById(p.id)!.status).toBe("running");
-    expect(db.getFingerprint(p.id)).toEqual({ fake: true });
+    expect(db.getFingerprint(p.id)).toEqual(FAKE_STORED_FINGERPRINT);
     expect(pm.isRunning("a")).toBe(true);
     expect(db.listEvents(p.id).map((e) => e.type)).toContain("profile.started");
   });
 
-  it("reuses the stored fingerprint on subsequent starts", async () => {
+  it("reuses the stored fingerprint (including seeds) on subsequent starts", async () => {
     const { runtime } = fakeRuntime();
     const pm = new ProfileManager(db, runtime, cfg);
     const p = db.createProfile({ name: "a" });
-    db.setFingerprint(p.id, { pinned: 1 });
+    const pinned = { fingerprint: { pinned: 1 }, seeds: { "audio:seed": 9, "canvas:seed": 8, "fonts:spacing_seed": 7 } };
+    db.setFingerprint(p.id, pinned);
     await pm.start("a");
-    expect(db.getFingerprint(p.id)).toEqual({ pinned: 1 });
+    expect(db.getFingerprint(p.id)).toEqual(pinned);
+  });
+
+  it("regenerates the fingerprint when the stored blob lacks seeds (pre-wrap legacy shape)", async () => {
+    const { runtime } = fakeRuntime();
+    const pm = new ProfileManager(db, runtime, cfg);
+    const p = db.createProfile({ name: "a" });
+    db.setFingerprint(p.id, { legacyFingerprintOnly: true }); // no `seeds` key
+    await pm.start("a");
+    expect(db.getFingerprint(p.id)).toEqual(FAKE_STORED_FINGERPRINT);
   });
 
   it("stop closes the browser and records the event", async () => {

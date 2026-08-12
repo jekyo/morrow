@@ -15,6 +15,23 @@ export interface RunningProfile {
   startedAt: Date;
 }
 
+/**
+ * Stored fingerprint blobs are opaque to ProfileManager, but v0.2.0 changed
+ * their shape from a bare fingerprint to `{ fingerprint, seeds }` (seeds pin
+ * camoufox's per-launch audio/canvas/font randomization — see
+ * src/server/browser/camoufox.ts). No release shipped the old shape, so this
+ * only guards dev machines that started a profile before the format changed.
+ */
+function hasSeeds(fp: unknown): boolean {
+  return (
+    typeof fp === "object" &&
+    fp !== null &&
+    "seeds" in fp &&
+    typeof (fp as { seeds?: unknown }).seeds === "object" &&
+    (fp as { seeds?: unknown }).seeds !== null
+  );
+}
+
 export class ProfileManager {
   private running = new Map<string, RunningProfile>(); // key: profile id
   private starting = new Set<string>();
@@ -63,7 +80,7 @@ export class ProfileManager {
     this.db.setProfileStatus(profile.id, "starting");
     try {
       let fingerprint = this.db.getFingerprint(profile.id);
-      if (fingerprint === undefined) {
+      if (!hasSeeds(fingerprint)) {
         fingerprint = this.runtime.generateFingerprint(profile);
         this.db.setFingerprint(profile.id, fingerprint);
       }
