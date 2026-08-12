@@ -4,6 +4,7 @@ import { globalSingleton } from "@/server/global";
 export interface ViewerPage {
   screenshot(opts?: { type?: "jpeg"; quality?: number }): Promise<Buffer>;
   url(): string;
+  goto(url: string, opts?: { waitUntil?: string; timeout?: number }): Promise<unknown>;
   mouse: {
     move(x: number, y: number): Promise<void>;
     down(): Promise<void>;
@@ -87,6 +88,38 @@ export class ViewerHub {
       else if (msg.action === "press") await this.page.keyboard.press(msg.key);
     }
   }
+
+  /** Navigate the page for the current control holder; a no-op for anyone else. */
+  async navigate(controllerId: string, url: string): Promise<void> {
+    if (!this.lock.has(controllerId)) return;
+    const normalized = normalizeNavigationUrl(url);
+    if (!normalized) return;
+    try {
+      await this.page.goto(normalized, { waitUntil: "commit" });
+    } catch {
+      // bad host, timeout, etc. — a failed nav must not throw out of the hub
+    }
+  }
+}
+
+/**
+ * Bare hosts (`example.com`) get an `https://` scheme assumed; anything with
+ * an explicit scheme that isn't http/https (`javascript:`, `file:`, ...) is
+ * rejected outright rather than handed to the page.
+ */
+function normalizeNavigationUrl(raw: string): string | null {
+  const trimmed = raw.trim();
+  if (!trimmed) return null;
+  const hasScheme = /^[a-z][a-z0-9+.-]*:/i.test(trimmed);
+  const candidate = hasScheme ? trimmed : `https://${trimmed}`;
+  let parsed: URL;
+  try {
+    parsed = new URL(candidate);
+  } catch {
+    return null;
+  }
+  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") return null;
+  return parsed.toString();
 }
 
 /**

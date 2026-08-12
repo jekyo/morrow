@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
 
 type InputMessage =
   | { type: "mouse"; action: "move" | "down" | "up"; x?: number; y?: number }
@@ -37,6 +37,8 @@ export function BrowserViewer({
   viewportHint: { width: number; height: number };
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const urlInputRef = useRef<HTMLInputElement>(null);
   const wsRef = useRef<WebSocket | null>(null);
   const pendingUrlRef = useRef<string | null>(null);
   const retryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -49,6 +51,9 @@ export function BrowserViewer({
   const [frameSize, setFrameSize] = useState<{ width: number; height: number } | null>(null);
   const [lock, setLock] = useState<{ holder: string | null; you: string | null }>({ holder: null, you: null });
   const [retryTick, setRetryTick] = useState(0);
+  const [urlInput, setUrlInput] = useState("");
+  const [urlFocused, setUrlFocused] = useState(false);
+  const [isFullscreen, setIsFullscreen] = useState(false);
 
   const controlling = lock.you !== null && lock.holder === lock.you;
   const contestedBy = lock.holder !== null && lock.holder !== lock.you ? lock.holder : null;
@@ -138,6 +143,21 @@ export function BrowserViewer({
     if (controlling) canvasRef.current?.focus();
   }, [controlling]);
 
+  // The address bar mirrors the live frame url, but never while the user is
+  // mid-edit — otherwise every incoming frameMeta would fight their typing.
+  useEffect(() => {
+    if (!urlFocused) setUrlInput(frameUrl ?? "");
+  }, [frameUrl, urlFocused]);
+
+  useEffect(() => {
+    function onFullscreenChange() {
+      const active = document.fullscreenElement === containerRef.current;
+      setIsFullscreen(active);
+    }
+    document.addEventListener("fullscreenchange", onFullscreenChange);
+    return () => document.removeEventListener("fullscreenchange", onFullscreenChange);
+  }, []);
+
   function send(input: InputMessage) {
     const ws = wsRef.current;
     if (ws?.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: "input", input }));
@@ -156,6 +176,27 @@ export function BrowserViewer({
   }
   function releaseControl() {
     wsRef.current?.send(JSON.stringify({ type: "releaseControl" }));
+  }
+  function navigate(url: string) {
+    const ws = wsRef.current;
+    if (ws?.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: "navigate", url }));
+  }
+  function handleUrlSubmit(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    const value = urlInput.trim();
+    if (!value || connState !== "open") return;
+    // Sent as two messages on the same socket, in order: the server applies
+    // takeControl before it looks at navigate, so the lock is already ours.
+    if (!controlling) takeControl();
+    navigate(value);
+    urlInputRef.current?.blur();
+  }
+  function toggleFullscreen() {
+    if (document.fullscreenElement) {
+      void document.exitFullscreen();
+    } else {
+      void containerRef.current?.requestFullscreen();
+    }
   }
   function reload() {
     send({ type: "key", action: "press", key: "F5" });
@@ -176,7 +217,32 @@ export function BrowserViewer({
       <div className="border-neutral bg-base-100 flex items-center gap-3 rounded-md border px-3 py-2 font-mono text-[12px]">
         <ControlIndicator controlling={controlling} contestedBy={contestedBy} />
         <span className="text-secondary/50">·</span>
-        <span className="text-secondary min-w-0 flex-1 truncate">{frameUrl ?? "about:blank"}</span>
+        <form onSubmit={handleUrlSubmit} className="flex min-w-0 flex-1 items-center gap-1.5">
+          <input
+            ref={urlInputRef}
+            type="text"
+            inputMode="url"
+            spellCheck={false}
+            autoComplete="off"
+            value={urlInput}
+            onChange={(e) => setUrlInput(e.target.value)}
+            onFocus={() => setUrlFocused(true)}
+            onBlur={() => setUrlFocused(false)}
+            placeholder="about:blank"
+            aria-label="Address"
+            title={controlling ? undefined : "Navigating takes control"}
+            className="text-secondary focus:text-base-content placeholder:text-secondary/50 min-w-0 flex-1 bg-transparent outline-none"
+          />
+          <button
+            type="submit"
+            disabled={connState !== "open" || urlInput.trim() === ""}
+            title="Go"
+            aria-label="Go to address"
+            className="text-secondary hover:text-base-content shrink-0 disabled:opacity-30"
+          >
+            ↵
+          </button>
+        </form>
         {connState === "open" && (
           <span className="text-primary/80 inline-flex items-center gap-1 text-[10px] tracking-[0.15em]">
             <span aria-hidden>●</span> LIVE
@@ -195,13 +261,14 @@ export function BrowserViewer({
       </div>
 
       <div
-        className="border-neutral relative overflow-hidden rounded-lg border bg-black"
-        style={{ aspectRatio: `${aspect.width} / ${aspect.height}` }}
+        ref={containerRef}
+        className={`border-neutral relative overflow-hidden border bg-black ${isFullscreen ? "" : "rounded-lg"}`}
+        style={isFullscreen ? undefined : { aspectRatio: `${aspect.width} / ${aspect.height}` }}
       >
         <canvas
           ref={canvasRef}
           tabIndex={controlling ? 0 : -1}
-          className={`block h-full w-full ${controlling ? "cursor-default focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary focus-visible:outline-offset-[-2px]" : "cursor-default"}`}
+          className={`block h-full w-full object-contain ${controlling ? "cursor-default focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary focus-visible:outline-offset-[-2px]" : "cursor-default"}`}
           onMouseMove={(e) => controlling && send({ type: "mouse", action: "move", ...toBrowserCoords(e) })}
           onMouseDown={(e) => {
             if (!controlling) return;
@@ -228,6 +295,16 @@ export function BrowserViewer({
             }
           }}
         />
+
+        <button
+          type="button"
+          onClick={toggleFullscreen}
+          title={isFullscreen ? "Exit fullscreen" : "Fullscreen"}
+          aria-label={isFullscreen ? "Exit fullscreen" : "Fullscreen"}
+          className="border-neutral/60 bg-base-100/70 text-secondary hover:text-base-content hover:border-neutral absolute top-2 right-2 z-10 flex h-7 w-7 items-center justify-center rounded-md border text-[13px] backdrop-blur-sm transition-colors"
+        >
+          ⛶
+        </button>
 
         {connState !== "open" && (
           <div className="absolute inset-0 flex items-center justify-center bg-black/70">

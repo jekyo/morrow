@@ -15,6 +15,7 @@ export interface ViewerAttachment {
   takeControl(viewerId: string): boolean;
   releaseControl(viewerId: string): void;
   input(viewerId: string, msg: InputMessage): Promise<void>;
+  navigate(viewerId: string, url: string): Promise<void>;
   subscribe(fn: (f: Frame) => void): () => void;
   onDisconnect(viewerId: string): void;
 }
@@ -83,7 +84,7 @@ async function run(ws: WebSocket, name: string, viewerId: string, deps: ViewerDe
   sendStatus();
 
   ws.on("message", (raw) => {
-    let msg: { type?: string; input?: InputMessage };
+    let msg: { type?: string; input?: InputMessage; url?: string };
     try {
       msg = JSON.parse(String(raw));
     } catch {
@@ -97,6 +98,8 @@ async function run(ws: WebSocket, name: string, viewerId: string, deps: ViewerDe
       sendStatus();
     } else if (msg.type === "input" && msg.input) {
       void att.input(viewerId, msg.input).catch((err) => console.error("viewer input failed", err));
+    } else if (msg.type === "navigate" && typeof msg.url === "string") {
+      void att.navigate(viewerId, msg.url).catch((err) => console.error("viewer navigate failed", err));
     }
   });
 
@@ -136,6 +139,7 @@ export function defaultViewerDeps(): ViewerDeps {
         takeControl: (id) => hub.lock.take(id),
         releaseControl: (id) => hub.lock.release(id),
         input: (id, msg) => hub.input(id, msg),
+        navigate: (id, url) => hub.navigate(id, url),
         subscribe: (fn) => {
           const un = hub.subscribe(fn);
           const s = db.createSession(profileId, "viewer");

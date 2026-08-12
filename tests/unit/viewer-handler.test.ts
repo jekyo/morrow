@@ -48,6 +48,9 @@ function deps(): ViewerDeps {
         input: async (id, msg) => {
           log.push(`input:${id}:${msg.type}:${(msg as { action: string }).action}`);
         },
+        navigate: async (id, url) => {
+          log.push(`navigate:${id}:${url}`);
+        },
         subscribe: (fn) => {
           subs.add(fn);
           const t = setInterval(() => fn({ data: Buffer.from([1, 2, 3]), url: "https://x.com", seq: 1 }), 10);
@@ -133,6 +136,21 @@ describe("viewer handler", () => {
     ws.send(JSON.stringify({ type: "releaseControl" }));
     await until(() => log.includes(`release:${you}`));
     await until(() => json.filter((m) => m.type === "lock").at(-1)!.holder === null);
+  });
+
+  it("routes a navigate message to the attachment with the raw url", async () => {
+    const ws = client();
+    const json: Array<{ type: string; holder?: string | null; you?: string }> = [];
+    ws.on("message", (data, isBinary) => {
+      if (!isBinary) json.push(JSON.parse(String(data)));
+    });
+    await new Promise((r) => ws.on("open", r));
+    await until(() => json.some((m) => m.type === "lock"));
+    const you = json.find((m) => m.type === "lock")!.you!;
+
+    ws.send(JSON.stringify({ type: "takeControl" }));
+    ws.send(JSON.stringify({ type: "navigate", url: "example.com" }));
+    await until(() => log.some((l) => l === `navigate:${you}:example.com`));
   });
 
   it("ignores malformed client messages", async () => {

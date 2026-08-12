@@ -7,6 +7,7 @@ function fakePage() {
   const page: ViewerPage = {
     async screenshot() { shot++; return Buffer.from([shot]); },
     url: () => "https://x.com/home",
+    async goto(url) { calls.push(`goto:${url}`); },
     mouse: {
       move: async (x, y) => { calls.push(`move:${x},${y}`); },
       down: async () => { calls.push("down"); },
@@ -69,6 +70,39 @@ describe("ViewerHub", () => {
     await vi.advanceTimersByTimeAsync(150);
     expect(meta).toBe("https://x.com/home");
     hub.stop();
+  });
+
+  it("navigates for the control holder, normalizing a bare host to https", async () => {
+    const { page, calls } = fakePage();
+    const hub = new ViewerHub(page, { fps: 10 });
+    hub.lock.take("v1");
+    await hub.navigate("v1", "example.com");
+    expect(calls).toEqual(["goto:https://example.com/"]);
+  });
+
+  it("does nothing when a non-holder tries to navigate", async () => {
+    const { page, calls } = fakePage();
+    const hub = new ViewerHub(page, { fps: 10 });
+    hub.lock.take("v1");
+    await hub.navigate("v2", "example.com");
+    expect(calls).toEqual([]);
+  });
+
+  it("rejects non-http(s) schemes without calling goto", async () => {
+    const { page, calls } = fakePage();
+    const hub = new ViewerHub(page, { fps: 10 });
+    hub.lock.take("v1");
+    await hub.navigate("v1", "javascript:alert(1)");
+    expect(calls).toEqual([]);
+  });
+
+  it("swallows a failed navigation instead of throwing", async () => {
+    const { page, calls } = fakePage();
+    page.goto = async () => { throw new Error("nav failed"); };
+    const hub = new ViewerHub(page, { fps: 10 });
+    hub.lock.take("v1");
+    await expect(hub.navigate("v1", "example.com")).resolves.toBeUndefined();
+    expect(calls).toEqual([]);
   });
 
   it("keeps delivering to healthy subscribers when one throws", async () => {
