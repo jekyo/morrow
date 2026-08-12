@@ -36,6 +36,7 @@ CREATE TABLE IF NOT EXISTS profiles (
   viewport_width INTEGER,
   viewport_height INTEGER,
   fingerprint_seed TEXT NOT NULL,
+  fingerprint TEXT,
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
@@ -86,13 +87,32 @@ export interface CreateProfileInput {
   viewportHeight?: number;
 }
 
+const MIGRATIONS: string[] = [
+  // 1: fingerprint column (fresh installs already have it via SCHEMA)
+  `ALTER TABLE profiles ADD COLUMN fingerprint TEXT`,
+];
+
+function migrate(db: Database.Database): void {
+  const fresh = !db.prepare(`SELECT name FROM sqlite_master WHERE type='table' AND name='profiles'`).get();
+  db.exec(SCHEMA);
+  const current = (db.pragma("user_version", { simple: true }) as number) ?? 0;
+  if (fresh) {
+    db.pragma(`user_version = ${MIGRATIONS.length}`);
+    return;
+  }
+  for (let v = current; v < MIGRATIONS.length; v++) {
+    db.exec(MIGRATIONS[v]);
+    db.pragma(`user_version = ${v + 1}`);
+  }
+}
+
 export class MorrowDb {
   private db: Database.Database;
 
   constructor(path: string) {
     this.db = new Database(path);
     this.db.pragma("journal_mode = WAL");
-    this.db.exec(SCHEMA);
+    migrate(this.db);
   }
 
   createProfile(input: CreateProfileInput): Profile {
@@ -167,6 +187,56 @@ export class MorrowDb {
         data: r.data === null ? undefined : JSON.parse(r.data),
         createdAt: r.created_at,
       }));
+  }
+
+  schemaVersion(): number {
+    return this.db.pragma("user_version", { simple: true }) as number;
+  }
+
+  getFingerprint(profileId: string): unknown {
+    const r = this.db.prepare(`SELECT fingerprint FROM profiles WHERE id = ?`).get(profileId) as
+      | { fingerprint: string | null }
+      | undefined;
+    return r?.fingerprint ? JSON.parse(r.fingerprint) : undefined;
+  }
+
+  setFingerprint(profileId: string, fp: unknown): void {
+    this.db
+      .prepare(`UPDATE profiles SET fingerprint = ?, updated_at = datetime('now') WHERE id = ?`)
+      .run(JSON.stringify(fp), profileId);
+  }
+
+  updateProfile(
+    profileId: string,
+    patch: Partial<Pick<Profile, "proxy" | "locale" | "timezone" | "viewportWidth" | "viewportHeight">> &
+      { [K in "proxy" | "locale" | "timezone"]?: string | null }
+  ): void {
+    const cols: Record<string, string> = {
+      proxy: "proxy",
+      locale: "locale",
+      timezone: "timezone",
+      viewportWidth: "viewport_width",
+      viewportHeight: "viewport_height",
+    };
+    const sets: string[] = [];
+    const values: unknown[] = [];
+    for (const [key, col] of Object.entries(cols)) {
+      if (key in patch) {
+        sets.push(`${col} = ?`);
+        values.push((patch as Record<string, unknown>)[key] ?? null);
+      }
+    }
+    if (!sets.length) return;
+    values.push(profileId);
+    this.db
+      .prepare(`UPDATE profiles SET ${sets.join(", ")}, updated_at = datetime('now') WHERE id = ?`)
+      .run(...values);
+  }
+
+  deleteProfile(profileId: string): void {
+    this.db.prepare(`DELETE FROM events WHERE profile_id = ?`).run(profileId);
+    this.db.prepare(`DELETE FROM sessions WHERE profile_id = ?`).run(profileId);
+    this.db.prepare(`DELETE FROM profiles WHERE id = ?`).run(profileId);
   }
 }
 

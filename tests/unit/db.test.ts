@@ -39,3 +39,43 @@ describe("events", () => {
     expect(events[1].data).toEqual({ url: "https://x.com" });
   });
 });
+
+describe("fingerprint", () => {
+  it("stores and retrieves fingerprint json", () => {
+    const p = db.createProfile({ name: "a" });
+    expect(db.getFingerprint(p.id)).toBeUndefined();
+    db.setFingerprint(p.id, { navigator: { platform: "Linux x86_64" } });
+    expect(db.getFingerprint(p.id)).toEqual({ navigator: { platform: "Linux x86_64" } });
+  });
+});
+
+describe("update/delete", () => {
+  it("updates config fields and bumps updated_at", () => {
+    const p = db.createProfile({ name: "a" });
+    db.updateProfile(p.id, { proxy: "http://u:p@h:1", locale: "de-DE" });
+    const q = db.getProfileById(p.id)!;
+    expect(q.proxy).toBe("http://u:p@h:1");
+    expect(q.locale).toBe("de-DE");
+    expect(q.timezone).toBeNull();
+  });
+
+  it("clears a field with null", () => {
+    const p = db.createProfile({ name: "a", locale: "en-US" });
+    db.updateProfile(p.id, { locale: null });
+    expect(db.getProfileById(p.id)!.locale).toBeNull();
+  });
+
+  it("deletes profile and its events", () => {
+    const p = db.createProfile({ name: "a" });
+    db.recordEvent(p.id, "profile.created");
+    db.deleteProfile(p.id);
+    expect(db.getProfileById(p.id)).toBeUndefined();
+    expect(db.listEvents(p.id)).toEqual([]);
+  });
+});
+
+describe("migrations", () => {
+  it("stamps user_version", () => {
+    expect(db.schemaVersion()).toBe(1);
+  });
+});
