@@ -20,6 +20,25 @@ v1.0.0 is the complete story: dashboard + human takeover, Playwright attach,
 the scrape family with OpenAPI docs, and MCP for agents — all four surfaces
 sharing one durable browser per profile.
 
+## Screenshots
+
+A profile's detail page — the live remote browser streams the real page as
+JPEG frames, with the control lock, connect snippets, active sessions, and the
+event timeline alongside it:
+
+![Profile detail with the live browser viewer](docs/screenshots/profile-detail.png)
+
+<table>
+  <tr>
+    <td width="50%"><img src="docs/screenshots/profiles.png" alt="Profiles list" /><br/><sub>Persistent profiles, each a durable browser identity.</sub></td>
+    <td width="50%"><img src="docs/screenshots/metrics.png" alt="Metrics" /><br/><sub>At-a-glance instance metrics.</sub></td>
+  </tr>
+  <tr>
+    <td width="50%"><img src="docs/screenshots/api-docs.png" alt="API reference (Swagger UI)" /><br/><sub>OpenAPI reference at <code>/api-docs</code> — generate a client.</sub></td>
+    <td width="50%"><img src="docs/screenshots/login.png" alt="Login" /><br/><sub>Single API key, kept in the browser.</sub></td>
+  </tr>
+</table>
+
 ## What works in v1
 
 This is the MVP end to end (docs/vision.md §32) — every step is a real,
