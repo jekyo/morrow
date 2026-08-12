@@ -86,6 +86,24 @@ describe("playwright attach passthrough", () => {
     ws.close();
   });
 
+  it("closes 1009 when a client floods the pre-start buffer", async () => {
+    const slow = deps({
+      ensureStarted: async () => {
+        await new Promise((r) => setTimeout(r, 3000));
+        return { wsEndpoint: upstreamUrl, profileId: "prof_1" };
+      },
+    });
+    front.removeAllListeners("upgrade");
+    front.on("upgrade", createUpgradeHandler(cfg, { playwright: playwrightAttachHandler(slow) }));
+    const ws = client("/playwright/a");
+    await new Promise((r) => ws.on("open", r));
+    const chunk = Buffer.alloc(4 * 1024 * 1024);
+    for (let i = 0; i < 12; i++) ws.send(chunk, { binary: true }); // 48MB > 32MB cap
+    const code = await new Promise<number>((r) => ws.on("close", (c) => r(c)));
+    expect(code).toBe(1009);
+    expect(events).toEqual([]); // never became a session
+  }, 15000);
+
   it("closes 4404 when the profile does not exist", async () => {
     const ws = client("/playwright/missing");
     const code = await new Promise<number>((r) => ws.on("close", (c) => r(c)));

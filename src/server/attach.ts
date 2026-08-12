@@ -15,6 +15,9 @@ export interface AttachDeps {
   onDisconnect(profileId: string, sessionId: string): void;
 }
 
+/** Client bytes we are willing to hold while the profile launches (lazy start can take minutes). */
+const MAX_PENDING_BYTES = 32 * 1024 * 1024;
+
 const CLOSE_CODES: Record<string, number> = {
   profile_not_found: 4404,
   too_many_profiles: 4429,
@@ -49,11 +52,22 @@ export function playwrightAttachHandler(deps: AttachDeps): WsHandler {
 async function attach(ws: WebSocket, profileName: string, req: IncomingMessage, deps: AttachDeps): Promise<void> {
   // Buffer client frames until the upstream pipe is open (lazy start can take seconds).
   const pending: Array<{ data: Buffer; isBinary: boolean }> = [];
+  let pendingBytes = 0;
   let upstream: WsClient | undefined;
   ws.on("message", (data, isBinary) => {
     const buf = Array.isArray(data) ? Buffer.concat(data) : Buffer.from(data as Buffer);
-    if (upstream && upstream.readyState === WsClient.OPEN) upstream.send(buf, { binary: isBinary });
-    else pending.push({ data: buf, isBinary });
+    if (upstream && upstream.readyState === WsClient.OPEN) {
+      upstream.send(buf, { binary: isBinary });
+      return;
+    }
+    pendingBytes += buf.length;
+    if (pendingBytes > MAX_PENDING_BYTES) {
+      pending.length = 0;
+      pendingBytes = 0;
+      safeClose(ws, 1009, "pending_buffer_overflow");
+      return;
+    }
+    pending.push({ data: buf, isBinary });
   });
 
   let target: { wsEndpoint: string; profileId: string };
@@ -84,6 +98,7 @@ async function attach(ws: WebSocket, profileName: string, req: IncomingMessage, 
 
   up.on("open", () => {
     sessionId = deps.onConnect(target.profileId);
+    pendingBytes = 0;
     for (const m of pending.splice(0)) up.send(m.data, { binary: m.isBinary });
   });
   up.on("message", (data, isBinary) => {
