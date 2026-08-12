@@ -1,7 +1,11 @@
 /**
  * Morrow brand mark: an "M" of twin peaks framing a rising sun over the horizon
  * — "browsers that remember" / a new day. Recreated from the brand board in the
- * design-system palette. Kept in sync with src/app/icon.svg (the favicon).
+ * design-system palette.
+ *
+ * Transparent background by design so it blends with sidebar/page surfaces
+ * (unlike src/app/icon.svg, the favicon, which keeps its solid tile — a
+ * browser tab needs a filled icon).
  */
 
 export function LogoMark({ size = 32, className }: { size?: number; className?: string }) {
@@ -15,7 +19,6 @@ export function LogoMark({ size = 32, className }: { size?: number; className?: 
       className={className}
       aria-hidden="true"
     >
-      <rect width="64" height="64" rx="14" fill="#13161A" />
       <defs>
         <linearGradient id="morrowSun" x1="32" y1="28" x2="32" y2="48" gradientUnits="userSpaceOnUse">
           <stop stopColor="#FFC98F" />

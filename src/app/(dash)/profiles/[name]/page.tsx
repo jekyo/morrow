@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { Globe } from "lucide-react";
 import { useParams, useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
 import { BrowserViewer } from "@/components/BrowserViewer";
@@ -84,6 +85,7 @@ export default function ProfileDetailPage() {
 
       <div className="mt-2 flex items-center justify-between gap-4">
         <div className="flex items-center gap-3">
+          <Globe size={18} className="text-secondary shrink-0" aria-hidden />
           <h1 className="text-base-content text-2xl font-semibold">{profile.name}</h1>
           <StatusBadge status={profile.status} />
         </div>

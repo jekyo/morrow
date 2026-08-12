@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { Globe } from "lucide-react";
 import { useMemo, useState } from "react";
 import { ClonePrompt } from "@/components/ClonePrompt";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
@@ -112,7 +113,11 @@ export default function ProfilesPage() {
               {filtered.map((p) => (
                 <tr key={p.id} className="border-neutral hover:bg-base-300/40 border-b last:border-b-0">
                   <td className="px-5 py-3">
-                    <Link href={`/profiles/${encodeURIComponent(p.name)}`} className="text-base-content hover:text-primary font-medium">
+                    <Link
+                      href={`/profiles/${encodeURIComponent(p.name)}`}
+                      className="text-base-content hover:text-primary inline-flex items-center gap-2 font-medium"
+                    >
+                      <Globe size={14} className="text-secondary shrink-0" aria-hidden />
                       {p.name}
                     </Link>
                     {rowError?.name === p.name && <div className="text-error mt-0.5 text-[11px]">{rowError.message}</div>}

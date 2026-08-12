@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
+import { BarChart3, BookOpen, Boxes, Braces, type LucideIcon } from "lucide-react";
 import type { ReactNode } from "react";
 import { API_KEY_STORAGE_KEY } from "@/lib/useApi";
 import { Logo } from "@/components/Logo";
@@ -10,6 +11,7 @@ import { Footer } from "@/components/Footer";
 interface NavItem {
   label: string;
   href: string;
+  icon: LucideIcon;
 }
 
 interface NavGroup {
@@ -21,15 +23,15 @@ const NAV: NavGroup[] = [
   {
     label: "Workspace",
     items: [
-      { label: "Profiles", href: "/profiles" },
-      { label: "Metrics", href: "/metrics" },
+      { label: "Profiles", href: "/profiles", icon: Boxes },
+      { label: "Metrics", href: "/metrics", icon: BarChart3 },
     ],
   },
   {
     label: "Resources",
     items: [
-      { label: "Docs", href: "/docs" },
-      { label: "API", href: "/api-docs" },
+      { label: "Docs", href: "/docs", icon: BookOpen },
+      { label: "API", href: "/api-docs", icon: Braces },
     ],
   },
 ];
@@ -62,16 +64,18 @@ function Sidebar() {
             <ul className="flex flex-col gap-0.5">
               {group.items.map((item) => {
                 const active = isActive(pathname, item.href);
+                const Icon = item.icon;
                 return (
                   <li key={item.href}>
                     <Link
                       href={item.href}
-                      className={`block rounded-[4px] border-l-2 px-3 py-2 text-sm transition-colors ${
+                      className={`flex items-center gap-2.5 rounded-[4px] border-l-2 px-3 py-2 text-sm transition-colors ${
                         active
                           ? "bg-base-300 border-primary text-base-content"
                           : "text-secondary hover:text-base-content hover:bg-base-300/50 border-transparent"
                       }`}
                     >
+                      <Icon size={16} strokeWidth={2} className="shrink-0" aria-hidden />
                       {item.label}
                     </Link>
                   </li>
@@ -110,9 +114,17 @@ export default function DashLayout({ children }: { children: ReactNode }) {
   return (
     <div className="bg-base-100 flex min-h-screen">
       <Sidebar />
-      <main className="flex min-w-0 flex-1 flex-col">
-        <div className="flex-1">{children}</div>
-        <Footer />
+      <main className="bg-base-100 relative flex min-w-0 flex-1 flex-col">
+        <div
+          aria-hidden
+          className="pointer-events-none absolute inset-0 bg-cover bg-center opacity-30"
+          style={{ backgroundImage: "url(/background.png)" }}
+        />
+        <div className="from-base-100/70 via-base-100/85 to-base-100 pointer-events-none absolute inset-0 bg-gradient-to-b" />
+        <div className="relative flex-1">{children}</div>
+        <div className="relative">
+          <Footer />
+        </div>
       </main>
     </div>
   );
