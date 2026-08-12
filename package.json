@@ -9,6 +9,7 @@
     "start": "NODE_ENV=production tsx src/server/index.ts",
     "test": "vitest run",
     "test:watch": "vitest",
+    "test:integration": "MORROW_IT=1 vitest run tests/integration --testTimeout=300000",
     "typecheck": "tsc --noEmit"
   },
   "overrides": {
