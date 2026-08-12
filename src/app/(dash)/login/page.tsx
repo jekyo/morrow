@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { type FormEvent, useState } from "react";
 import { ApiClientError, MorrowClient } from "@/lib/api";
 import { API_KEY_STORAGE_KEY } from "@/lib/useApi";
+import { Logo } from "@/components/Logo";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -36,11 +37,8 @@ export default function LoginPage() {
   return (
     <main className="bg-base-100 flex min-h-screen items-center justify-center px-6">
       <div className="w-full max-w-sm">
-        <div className="mb-8 flex items-center justify-center gap-2">
-          <span className="bg-primary text-primary-content flex h-7 w-7 items-center justify-center rounded-[6px] text-sm font-bold">
-            M
-          </span>
-          <span className="text-base-content/90 font-mono text-sm tracking-[0.3em] uppercase">Morrow</span>
+        <div className="mb-8 flex items-center justify-center">
+          <Logo size={40} />
         </div>
 
         <form onSubmit={onSubmit} className="border-neutral bg-base-200 rounded-lg border p-6">

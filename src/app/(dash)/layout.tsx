@@ -4,6 +4,8 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import type { ReactNode } from "react";
 import { API_KEY_STORAGE_KEY } from "@/lib/useApi";
+import { Logo } from "@/components/Logo";
+import { Footer } from "@/components/Footer";
 
 interface NavItem {
   label: string;
@@ -47,13 +49,8 @@ function Sidebar() {
 
   return (
     <aside className="border-neutral bg-base-200 flex w-56 shrink-0 flex-col border-r">
-      <div className="border-neutral flex items-center gap-2 border-b px-5 py-5">
-        <span className="bg-primary text-primary-content flex h-6 w-6 items-center justify-center rounded-[6px] text-xs font-bold">
-          M
-        </span>
-        <span className="font-mono text-[13px] font-medium tracking-[0.28em] text-base-content uppercase">
-          Morrow
-        </span>
+      <div className="border-neutral flex items-center border-b px-5 py-5">
+        <Logo size={26} />
       </div>
 
       <nav className="flex-1 overflow-y-auto px-3 py-5">
@@ -113,7 +110,10 @@ export default function DashLayout({ children }: { children: ReactNode }) {
   return (
     <div className="bg-base-100 flex min-h-screen">
       <Sidebar />
-      <main className="min-w-0 flex-1">{children}</main>
+      <main className="flex min-w-0 flex-1 flex-col">
+        <div className="flex-1">{children}</div>
+        <Footer />
+      </main>
     </div>
   );
 }
