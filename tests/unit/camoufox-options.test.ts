@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import { buildCamoufoxOptions, isGeoipLookupError } from "@/server/browser/camoufox";
 import { CamoufoxRuntime } from "@/server/browser/camoufox";
 import type { Profile } from "@/server/db";
+import type { ProxyEgress } from "@/server/browser/geo";
 
 const base: Profile = {
   id: "prof_x",
@@ -89,6 +90,68 @@ describe("buildCamoufoxOptions", () => {
   it("passes the profile's os through to the camoufox `os` launch option", () => {
     const o = buildCamoufoxOptions({ ...base, os: "macos" }, { profileDir: "/d", fingerprint: storedFingerprint });
     expect(o.os).toBe("macos");
+  });
+});
+
+describe("buildCamoufoxOptions with a resolved proxy egress (P0-WEBRTC)", () => {
+  const egress: ProxyEgress = {
+    ip: "203.0.113.9",
+    timezone: "Europe/Bucharest",
+    country: "RO",
+    locale: "ro-RO",
+    latitude: 44.447,
+    longitude: 26.0185,
+    rotating: false,
+  };
+
+  it("disables camoufox geoip and pins webrtc:ipv4 to the resolved egress IP instead", () => {
+    const o = buildCamoufoxOptions(
+      { ...base, proxy: "http://u:p@h:1" },
+      { profileDir: "/d", fingerprint: storedFingerprint, proxyEgress: egress }
+    );
+    expect("geoip" in o).toBe(false);
+    expect((o.config as Record<string, unknown>)["webrtc:ipv4"]).toBe("203.0.113.9");
+    expect(o.firefox_user_prefs).toMatchObject({ "network.dns.disableIPv6": true });
+  });
+
+  it("merges the egress timezone/geolocation/locale into config", () => {
+    const o = buildCamoufoxOptions(
+      { ...base, proxy: "http://u:p@h:1" },
+      { profileDir: "/d", fingerprint: storedFingerprint, proxyEgress: egress }
+    );
+    const config = o.config as Record<string, unknown>;
+    expect(config.timezone).toBe("Europe/Bucharest");
+    expect(config["geolocation:latitude"]).toBe(44.447);
+    expect(config["geolocation:longitude"]).toBe(26.0185);
+    expect(config["locale:region"]).toBe("RO");
+    expect(config["locale:language"]).toBe("ro");
+  });
+
+  it("blocks webrtc instead of pinning a stale IP when the proxy is rotating", () => {
+    const o = buildCamoufoxOptions(
+      { ...base, proxy: "http://u:p@h:1" },
+      { profileDir: "/d", fingerprint: storedFingerprint, proxyEgress: { ...egress, rotating: true } }
+    );
+    expect(o.block_webrtc).toBe(true);
+  });
+
+  it("falls back to geoip:true when egress resolution failed (proxyEgress: null)", () => {
+    const o = buildCamoufoxOptions(
+      { ...base, proxy: "http://u:p@h:1" },
+      { profileDir: "/d", fingerprint: storedFingerprint, proxyEgress: null }
+    );
+    expect(o.geoip).toBe(true);
+    expect("webrtc:ipv4" in (o.config as Record<string, unknown>)).toBe(false);
+  });
+
+  it("an explicit profile timezone still wins over a resolved proxy egress", () => {
+    const o = buildCamoufoxOptions(
+      { ...base, proxy: "http://u:p@h:1", timezone: "America/New_York" },
+      { profileDir: "/d", fingerprint: storedFingerprint, proxyEgress: egress }
+    );
+    expect("geoip" in o).toBe(false);
+    expect((o.config as Record<string, unknown>).timezone).toBe("America/New_York");
+    expect("webrtc:ipv4" in (o.config as Record<string, unknown>)).toBe(false);
   });
 });
 

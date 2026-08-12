@@ -3,6 +3,7 @@ import { generateFingerprint } from "camoufox-js/dist/fingerprints.js";
 import { firefox } from "playwright-core";
 import type { Profile } from "@/server/db";
 import type { BrowserRuntime, RunningBrowser } from "@/server/browser/runtime";
+import { resolveProxyEgress, type ProxyEgress } from "@/server/browser/geo";
 
 /**
  * The three properties camoufox-js's launchOptions() randomizes on EVERY
@@ -68,7 +69,21 @@ function randomSeeds(): CamoufoxSeeds {
  */
 export function buildCamoufoxOptions(
   profile: Profile,
-  opts: { profileDir: string; fingerprint: unknown; geoip?: boolean }
+  opts: {
+    profileDir: string;
+    fingerprint: unknown;
+    geoip?: boolean;
+    /**
+     * The proxy's real egress IP, resolved by Morrow itself (see geo.ts) —
+     * NOT camoufox's own `geoip:true`, whose impit-based lookup doesn't
+     * reliably route through the proxy (docs/notes/fingerprint-audit.md
+     * P0-WEBRTC). `undefined` when not applicable (no proxy, or the caller
+     * didn't resolve one — falls back to the old geoip:true behavior).
+     * `null` when resolution was attempted but the proxy was unreachable
+     * (falls back to geoip:true too, same as undefined).
+     */
+    proxyEgress?: ProxyEgress | null;
+  }
 ): Record<string, unknown> {
   const stored = opts.fingerprint as StoredFingerprint;
   // Pins camoufox-js's per-launch audio/canvas/font seeds (see StoredFingerprint above)
@@ -89,11 +104,39 @@ export function buildCamoufoxOptions(
     // Explicit timezone forces the browser clock and disables IP-based geo:
     // geoip would otherwise overwrite `config.timezone` with the egress-IP zone.
     config.timezone = profile.timezone;
+  } else if (opts.proxyEgress) {
+    // We resolved the proxy's real egress IP ourselves (through the proxy, via
+    // undici's ProxyAgent — see geo.ts). Mirror what camoufox's geoip:true does,
+    // but seeded from the CORRECT IP instead of impit's unreliable lookup: pin
+    // webrtc:ipv4 to it, disable IPv6 (so WebRTC can't leak an IPv6 host
+    // candidate instead), and derive timezone/geolocation/locale from it. We
+    // deliberately do NOT set o.geoip here — that would re-trigger camoufox's
+    // own (unreliable-through-proxy) lookup and clobber this.
+    const egress = opts.proxyEgress;
+    config["webrtc:ipv4"] = egress.ip;
+    o.firefox_user_prefs = {
+      ...(o.firefox_user_prefs as Record<string, unknown> | undefined),
+      "network.dns.disableIPv6": true,
+    };
+    if (egress.timezone) config.timezone = egress.timezone;
+    if (egress.latitude !== undefined) config["geolocation:latitude"] = egress.latitude;
+    if (egress.longitude !== undefined) config["geolocation:longitude"] = egress.longitude;
+    if (egress.country) config["locale:region"] = egress.country;
+    if (egress.locale) config["locale:language"] = egress.locale.split("-")[0];
+    if (egress.rotating) {
+      // A rotating proxy's next request can exit through a different IP than the
+      // one we just pinned into webrtc:ipv4 — a fixed WebRTC candidate would then
+      // mismatch the live HTTP exit, which is itself a correlation tell. Blocking
+      // WebRTC outright is safer than a stale/mismatched IP for rotating proxies.
+      o.block_webrtc = true;
+    }
   } else if (opts.geoip !== false) {
-    // No explicit timezone → derive timezone, locale, geolocation and WebRTC IP
-    // from the egress IP (through the proxy if set), so the browser's clock and
-    // location stay consistent with its exit IP instead of the container's. This
-    // uses Camoufox's bundled MaxMind GeoLite2 database — no external service.
+    // No explicit timezone, and no (or unresolved) proxy egress → derive timezone,
+    // locale, geolocation and WebRTC IP from camoufox's own egress-IP lookup, so the
+    // browser's clock and location stay consistent with its exit IP instead of the
+    // container's. This uses Camoufox's bundled MaxMind GeoLite2 database — no
+    // external service. (For a proxied profile this is the "couldn't verify the
+    // proxy ourselves" fallback — see CamoufoxRuntime.start.)
     o.geoip = true;
   }
   if (profile.viewportWidth && profile.viewportHeight)
@@ -129,20 +172,33 @@ export class CamoufoxRuntime implements BrowserRuntime {
   }
 
   async start(profile: Profile, opts: { profileDir: string; fingerprint: unknown }): Promise<RunningBrowser> {
+    // Resolve the proxy's real egress IP ourselves (see geo.ts / P0-WEBRTC) before
+    // launch, so webrtc:ipv4/timezone/geo can be seeded from the CORRECT IP instead
+    // of camoufox's own geoip:true (which doesn't reliably route its lookup through
+    // the proxy). Only relevant when a proxy is set and the profile doesn't already
+    // pin an explicit timezone (which disables geoip entirely — see buildCamoufoxOptions).
+    // Never throws: an unreachable proxy resolves to null and buildCamoufoxOptions
+    // falls back to the existing geoip:true path below.
+    const proxyEgress =
+      profile.proxy && !profile.timezone ? await resolveProxyEgress(profile.proxy).catch(() => null) : undefined;
     let server;
     try {
-      server = await launchServer(buildCamoufoxOptions(profile, opts) as Parameters<typeof launchServer>[0]);
+      server = await launchServer(
+        buildCamoufoxOptions(profile, { ...opts, proxyEgress }) as Parameters<typeof launchServer>[0]
+      );
     } catch (err) {
       // geoip does a live public-IP lookup (through the proxy) before the browser
       // process spawns; if every IP endpoint is unreachable it throws. Don't brick
       // the profile — retry once without geoip (falls back to the host timezone).
+      // (Only reachable when proxyEgress is null/undefined — the resolved-egress
+      // path above never sets geoip:true, see buildCamoufoxOptions.)
       if (isGeoipLookupError(err) && !profile.timezone) {
         console.warn(
           `geoip lookup failed for profile ${profile.name}, starting without it:`,
           err instanceof Error ? err.message : err
         );
         server = await launchServer(
-          buildCamoufoxOptions(profile, { ...opts, geoip: false }) as Parameters<typeof launchServer>[0]
+          buildCamoufoxOptions(profile, { ...opts, geoip: false, proxyEgress }) as Parameters<typeof launchServer>[0]
         );
       } else {
         throw err;

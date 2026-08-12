@@ -6,6 +6,7 @@ import {
   pageOptionsSchema,
   screenshotSchema,
   scrapeSchema,
+  proxyCheckSchema,
   profileName,
 } from "@/server/validation";
 
@@ -263,5 +264,28 @@ export function registerPaths(registry: OpenAPIRegistry): void {
     summary: "Extract markdown, plain text, a readability article and/or selector matches",
     request: body(scrapeSchema),
     responses: { 200: ok("Extraction result", ScrapeResult), ...BAD_REQUEST, ...AUTH },
+  });
+
+  registry.registerPath({
+    method: "post",
+    path: "/proxy/check",
+    tags: ["Ops"],
+    summary: "Preflight a proxy: resolve its real egress IP, timezone, geo and locale",
+    request: body(proxyCheckSchema),
+    responses: {
+      200: ok(
+        "The proxy's resolved identity",
+        z.object({
+          ip: z.string(),
+          country: z.string().nullable(),
+          city: z.string().nullable(),
+          timezone: z.string().nullable(),
+          locale: z.string().nullable(),
+          rotating: z.boolean(),
+        })
+      ),
+      ...BAD_REQUEST,
+      ...AUTH,
+    },
   });
 }

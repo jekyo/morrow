@@ -14,6 +14,10 @@ export const createProfileSchema = z.object({
   os: z.enum(["windows", "macos", "linux"]).optional(),
 });
 
+export const proxyCheckSchema = z.object({
+  proxy: z.string().min(1),
+});
+
 export const updateProfileSchema = z.object({
   proxy: z.string().min(1).nullable().optional(),
   locale: z.string().min(2).nullable().optional(),
