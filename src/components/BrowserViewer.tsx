@@ -10,6 +10,33 @@ type InputMessage =
 
 type ConnState = "connecting" | "open" | "reconnecting" | "error";
 
+/**
+ * Map a viewport pointer position to a coordinate in the frame's bitmap space.
+ * The frame is drawn with `object-contain`, so it is scaled to fit inside the
+ * canvas element preserving aspect ratio and centered, leaving letterbox bars
+ * when the element's aspect ratio differs from the frame's (most visibly in
+ * fullscreen). This accounts for that scale and centering offset so clicks land
+ * where the user aimed; keyboard input needs no coordinates, which is why it
+ * kept working when this was wrong. Exported for unit testing.
+ */
+export function frameCoords(
+  rect: { left: number; top: number; width: number; height: number },
+  bmpW: number,
+  bmpH: number,
+  clientX: number,
+  clientY: number
+): { x: number; y: number } {
+  const scale = Math.min(rect.width / bmpW, rect.height / bmpH) || 1;
+  const offX = (rect.width - bmpW * scale) / 2;
+  const offY = (rect.height - bmpH * scale) / 2;
+  const x = (clientX - rect.left - offX) / scale;
+  const y = (clientY - rect.top - offY) / scale;
+  return {
+    x: Math.round(Math.max(0, Math.min(bmpW, x))),
+    y: Math.round(Math.max(0, Math.min(bmpH, y))),
+  };
+}
+
 const FATAL_CODES: Record<number, string> = {
   4404: "Profile not found.",
   4429: "Too many profiles running — stop another profile first.",
@@ -165,10 +192,7 @@ export function BrowserViewer({
 
   function toBrowserCoords(e: { clientX: number; clientY: number }): { x: number; y: number } {
     const canvas = canvasRef.current!;
-    const rect = canvas.getBoundingClientRect();
-    const scaleX = canvas.width / rect.width;
-    const scaleY = canvas.height / rect.height;
-    return { x: Math.round((e.clientX - rect.left) * scaleX), y: Math.round((e.clientY - rect.top) * scaleY) };
+    return frameCoords(canvas.getBoundingClientRect(), canvas.width, canvas.height, e.clientX, e.clientY);
   }
 
   function takeControl() {
