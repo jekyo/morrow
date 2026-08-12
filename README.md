@@ -33,7 +33,7 @@ Stop it (flushes browser state to disk):
     curl -X POST http://localhost:3000/api/v1/profiles/research-eu/stop \
       -H "Authorization: Bearer $MORROW_API_KEY"
 
-Profile state (cookies, storage, logins) persists on disk across restarts, so stopping and starting the same profile resumes exactly where it left off. A connect/attach endpoint for driving a running profile with a stock browser client ships in the next release.
+Profile state (cookies, storage, logins) persists on disk across restarts, so stopping and starting the same profile resumes exactly where it left off.
 
 ## Connect with Playwright
 
