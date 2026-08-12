@@ -53,3 +53,28 @@ export async function applyPageOptions(page: PageLike, opts: PageOptions): Promi
   if (opts.waitForTimeout) await page.waitForTimeout(opts.waitForTimeout);
   if (opts.waitForFunction) await guard(page.waitForFunction(opts.waitForFunction.fn, undefined, { timeout: opts.waitForFunction.timeout }));
 }
+
+export interface AcquiredContext {
+  context: Pick<BrowserContext, "newPage">;
+  release(): Promise<void>;
+}
+export interface ContextResolver {
+  acquire(): Promise<AcquiredContext>;
+}
+
+export async function runPage<T>(
+  resolver: ContextResolver,
+  opts: PageOptions,
+  extract: (page: Page) => Promise<T>
+): Promise<T> {
+  const { context, release } = await resolver.acquire();
+  let page: Awaited<ReturnType<BrowserContext["newPage"]>> | undefined;
+  try {
+    page = await context.newPage();
+    await applyPageOptions(page as unknown as PageLike, opts);
+    return await extract(page as unknown as Page);
+  } finally {
+    if (page) await page.close().catch(() => {});
+    await release().catch(() => {});
+  }
+}
