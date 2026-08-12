@@ -11,6 +11,9 @@
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit"
   },
+  "overrides": {
+    "playwright-core": "1.60.0"
+  },
   "dependencies": {
     "better-sqlite3": "^13.0.3",
     "camoufox-js": "^0.12.0",
