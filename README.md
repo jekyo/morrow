@@ -2,6 +2,57 @@
 
 **Browsers that remember.** Persistent browser infrastructure for humans and machines.
 
+Create a profile once, log in once, and come back tomorrow — the browser is
+still there, still authenticated. Morrow gives every profile a real,
+persistent Camoufox (anti-detect Firefox) browser identity: cookies, local
+storage, and logins are written to disk and survive restarts. A profile can
+be driven from four directions at once, all sharing the same identity —
+
+- a **human**, through the dashboard's live viewer and takeover control,
+- **REST**, one-shot scrape/screenshot/content endpoints (with or without an
+  authenticated profile behind them),
+- **Playwright**, any stock client attaching straight to the persistent
+  browser over a websocket,
+- an **AI agent**, through 13 MCP tools operating on the same persistent,
+  optionally logged-in profile.
+
+v1.0.0 is the complete story: dashboard + human takeover, Playwright attach,
+the scrape family with OpenAPI docs, and MCP for agents — all four surfaces
+sharing one durable browser per profile.
+
+## What works in v1
+
+This is the MVP end to end (docs/vision.md §32) — every step is a real,
+tested code path today:
+
+1. **Create a profile** — `POST /api/v1/profiles`, or the dashboard.
+2. **Open it remotely** — start it and open the dashboard's live viewer,
+   streaming the real browser as ~10fps JPEG frames over a websocket.
+3. **Navigate to a site** — from the viewer, the REST API, Playwright, or an
+   MCP `navigate` call.
+4. **A human logs in by hand** — press **Take Control** in the viewer; mouse,
+   scroll, and keyboard go straight to the remote browser.
+5. **Close it** — `POST /api/v1/profiles/:name/stop` flushes cookies and
+   storage to disk.
+6. **Reopen it — still logged in** — start it again; the persistence tests
+   (`tests/integration/persistence.test.ts`) assert cookies set before a stop
+   are still there after a cold restart, with an identical browser
+   fingerprint.
+7. **Connect Playwright** — `firefox.connect("ws://.../playwright/<profile>?token=...")`
+   attaches to the profile's persistent context, lazily starting it if needed.
+8. **Automate it** — drive the attached Playwright `Page` (or MCP's
+   `click`/`type`/`press_key`/`scroll`/`wait_for`) like any other browser.
+9. **Scrape the authenticated page** — `POST /api/v1/scrape` (or the MCP
+   `scrape` tool) with `"profile": "<name>"` runs inside that same
+   logged-in context — no cookie/session handoff required.
+10. **Clean Markdown out** — Readability-based `article` extraction, or plain
+    `markdown`/`text`, documented at `/api-docs` (OpenAPI 3).
+
+On top of all ten: an **MCP server at `/mcp`** lets an AI agent do the same
+create → navigate → authenticate → automate → scrape flow itself, acting
+inside a persistent, potentially human-authenticated identity instead of a
+throwaway browser. See [MCP](#mcp) below.
+
 ## Run (development)
 
     cp .env.example .env   # set MORROW_API_KEY
