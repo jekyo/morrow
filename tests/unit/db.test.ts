@@ -104,4 +104,12 @@ describe("sessions", () => {
     db.closeSession(s.id);
     expect(db.listActiveSessions()).toHaveLength(0);
   });
+
+  it("closeAllSessions closes every open session (boot reconciliation)", () => {
+    const p = db.createProfile({ name: "a" });
+    db.createSession(p.id, "playwright");
+    db.createSession(p.id, "viewer");
+    db.closeAllSessions();
+    expect(db.listActiveSessions()).toHaveLength(0);
+  });
 });

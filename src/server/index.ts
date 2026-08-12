@@ -14,6 +14,7 @@ async function main() {
 
   const db = getDb(cfg.dataDir);
   db.resetRunningProfiles(); // boot reconciliation (spec §3 lifecycle)
+  db.closeAllSessions();
 
   const app = next({ dev, port: cfg.port });
   const handleRequest = app.getRequestHandler();

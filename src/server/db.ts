@@ -265,6 +265,11 @@ export class MorrowDb {
       .run(sessionId);
   }
 
+  /** Boot reconciliation: the process restarted, no connection survived it. */
+  closeAllSessions(): void {
+    this.db.prepare(`UPDATE sessions SET disconnected_at = datetime('now') WHERE disconnected_at IS NULL`).run();
+  }
+
   listActiveSessions(): Array<Session & { profileName: string }> {
     const rows = this.db
       .prepare(
