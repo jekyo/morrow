@@ -1,12 +1,21 @@
 # Morrow
 
-**Browsers that remember.** Persistent browser infrastructure for humans and machines.
+**Browsers that remember.** Persistent, fingerprint-resistant browser
+infrastructure for humans and machines.
 
 Create a profile once, log in once, and come back tomorrow — the browser is
-still there, still authenticated. Morrow gives every profile a real,
-persistent Camoufox (anti-detect Firefox) browser identity: cookies, local
-storage, and logins are written to disk and survive restarts. A profile can
-be driven from four directions at once, all sharing the same identity —
+still there, still authenticated, and still hard to fingerprint. Every Morrow
+profile is a real, persistent [Camoufox](https://camoufox.com) browser — an
+anti-detection Firefox fork — with a **stable, spoofed fingerprint** (user
+agent, screen, canvas/WebGL, audio, fonts, timezone, locale) that stays
+consistent across restarts. Cookies, local storage, and logins are written to
+disk and survive restarts, so a profile behaves like a returning human on a
+real machine rather than a fresh headless bot.
+
+Because the fingerprint is coherent and persistent, profiles trip far fewer
+bot-detection walls and CAPTCHAs than stock headless Chromium — see
+[Stealth & fingerprinting](#stealth--fingerprinting). A profile can be driven
+from four directions at once, all sharing the same identity —
 
 - a **human**, through the dashboard's live viewer and takeover control,
 - **REST**, one-shot scrape/screenshot/content endpoints (with or without an
@@ -71,6 +80,42 @@ On top of all ten: an **MCP server at `/mcp`** lets an AI agent do the same
 create → navigate → authenticate → automate → scrape flow itself, acting
 inside a persistent, potentially human-authenticated identity instead of a
 throwaway browser. See [MCP](#mcp) below.
+
+## Stealth & fingerprinting
+
+Most automation stacks are trivially detectable: stock headless Chromium leaks
+`navigator.webdriver`, a mismatched or missing fingerprint, and a brand-new
+cookie jar on every run. Detection vendors flag that in milliseconds, and the
+result is CAPTCHAs, blocks, and dead sessions.
+
+Morrow is built on **[Camoufox](https://camoufox.com)**, an anti-detection
+Firefox fork, and leans on the two things that actually move the needle:
+
+- **A coherent, spoofed fingerprint.** Each profile is assigned a realistic
+  fingerprint — user agent, platform, screen and viewport, hardware
+  concurrency, canvas/WebGL, audio, font metrics, timezone, and locale — that
+  is internally consistent (no headless tells, no contradictions between
+  layers). Camoufox applies these at the C++/engine level, not via detectable
+  JS patches, so `navigator.webdriver` and the usual automation giveaways are
+  absent.
+- **That fingerprint is persistent.** Morrow generates it once per profile and
+  pins every value — including the canvas/audio/font seeds that would otherwise
+  re-randomize on each launch — so the identity is *byte-identical across
+  restarts*. A returning profile looks like the same real machine coming back,
+  not a new bot each time. Combined with persisted cookies and logins, that is
+  what a genuine returning user looks like.
+
+The practical effect: profiles pass far more bot-detection checks and hit far
+fewer CAPTCHAs than stock headless browsers, especially on sites you've already
+logged into with that profile. Add a residential proxy per profile
+(`"proxy"` on create) and the network origin lines up with the identity too.
+
+**Honest scope:** Morrow does not *solve* CAPTCHAs, and no anti-detection tool
+is a guarantee against a determined, well-resourced detector. What it does is
+remove the cheap, obvious tells and present a stable, human-shaped identity —
+which is enough to get through the overwhelming majority of routine
+fingerprint- and reputation-based walls. Use it responsibly and within the
+terms of the sites you automate.
 
 ## Run (development)
 
