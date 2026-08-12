@@ -215,7 +215,7 @@ REST API and dashboard use:
 | `start_profile` | Start a profile's browser |
 | `stop_profile` | Stop a profile's browser (flushes state to disk) |
 | `navigate` | Navigate the profile's active page to a URL |
-| `snapshot` | Compact accessibility-tree snapshot of the current page — the agent-friendly view |
+| `snapshot` | Compact accessibility (aria) tree of the current page as YAML with `[ref=eN]` handles — the agent-friendly view |
 | `click` | Click an element matching a selector |
 | `type` | Fill an input (optionally submit with Enter) |
 | `press_key` | Press a keyboard key |

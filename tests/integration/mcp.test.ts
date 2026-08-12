@@ -94,8 +94,12 @@ describe.runIf(enabled)("mcp integration (real camoufox, real MCP client)", () =
     expect(mine?.status).toBe("running");
 
     const snap = await call("snapshot", { profile: PROFILE });
-    const snapResult = json(snap) as { role?: string; name?: string };
-    expect(snapResult.role).toBe("WebArea");
+    const snapResult = json(snap) as { url?: string; title?: string; snapshot?: string };
+    // Assert on the *real* aria tree example.com produces, not on a constant we
+    // control — the snapshot must actually reflect the live page.
+    expect(snapResult.title).toContain("Example Domain");
+    expect(snapResult.snapshot).toContain('heading "Example Domain"');
+    expect(snapResult.snapshot).toContain("[ref=");
 
     const shot = await call("screenshot", { profile: PROFILE });
     expect(shot.content[0]).toMatchObject({ type: "image", mimeType: "image/png" });

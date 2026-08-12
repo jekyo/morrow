@@ -15,7 +15,12 @@ function fakePage() {
     mouse: { wheel: async (x: number, y: number) => { calls.push(`wheel:${x},${y}`); } },
     waitForSelector: async (s: string) => { calls.push(`wait:${s}`); },
     screenshot: async () => Buffer.from([0x89, 0x50, 0x4e, 0x47]),
-    accessibility: { snapshot: async () => ({ role: "WebArea", name: "Example", children: [] }) },
+    // Mirrors the real playwright-core 1.60 Page: an `ariaSnapshot()` yielding a
+    // YAML aria tree. There is no `accessibility.snapshot()` any more.
+    ariaSnapshot: async (options?: { mode?: "ai" | "default" }) => {
+      calls.push(`aria:${options?.mode ?? "default"}`);
+      return '- heading "Example Domain" [level=1] [ref=e3]';
+    },
     content: async () => "<html><body><h1>Example</h1></body></html>",
     evaluate: async () => "Example body text",
   };
@@ -60,11 +65,17 @@ describe("mcp tools", () => {
     expect(page.calls).toContain("fill:#in:hi");
   });
 
-  it("snapshot returns the accessibility tree", async () => {
-    const { deps: d } = deps();
+  it("snapshot returns the aria tree in AI mode with page context", async () => {
+    const { deps: d, page } = deps();
     const tools = makeTools(d);
     const r = await tools.snapshot.handler({ profile: "a" });
-    expect(r).toMatchObject({ role: "WebArea", name: "Example" });
+    expect(r).toEqual({
+      url: "https://example.com/",
+      title: "Example",
+      snapshot: '- heading "Example Domain" [level=1] [ref=e3]',
+    });
+    // "ai" mode is what makes the tree agent-usable (element [ref=..] handles).
+    expect(page.calls).toContain("aria:ai");
   });
 
   it("scrape delegates and returns markdown", async () => {

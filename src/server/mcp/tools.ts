@@ -12,7 +12,13 @@ export interface ToolPage {
   mouse: { wheel(dx: number, dy: number): Promise<void> };
   waitForSelector(selector: string, options?: { timeout?: number }): Promise<unknown>;
   screenshot(options?: { fullPage?: boolean }): Promise<Buffer>;
-  accessibility: { snapshot(): Promise<unknown> };
+  /**
+   * playwright-core 1.60 replaced the legacy `page.accessibility.snapshot()`
+   * with `ariaSnapshot()`, which returns a YAML aria tree. In `"ai"` mode it
+   * also emits `[ref=eN]` element handles, which is what makes the tree
+   * actionable for an agent.
+   */
+  ariaSnapshot(options?: { mode?: "ai" | "default" }): Promise<string>;
   content(): Promise<string>;
   evaluate(...args: unknown[]): Promise<unknown>;
 }
@@ -145,11 +151,16 @@ export function makeTools(deps: ToolDeps) {
     },
 
     snapshot: {
-      description: "Get a compact accessibility tree snapshot of the current page — the agent-friendly view.",
+      description:
+        "Get a compact accessibility (aria) tree of the current page as YAML, with [ref=eN] element handles — the agent-friendly view. Returns { url, title, snapshot }.",
       inputSchema: snapshotSchema,
       handler: async (args: z.infer<typeof snapshotSchema>) => {
         const page = await deps.activePage(args.profile);
-        return page.accessibility.snapshot();
+        return {
+          url: page.url(),
+          title: await page.title(),
+          snapshot: await page.ariaSnapshot({ mode: "ai" }),
+        };
       },
     },
 
