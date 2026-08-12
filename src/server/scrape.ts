@@ -11,6 +11,15 @@ export async function runContent(profile: string | undefined, opts: PageOptions)
   return runPage(resolverFor(profile), opts, (page: Page) => page.content());
 }
 
+/** Playwright rejects `quality` on png screenshots, so it only survives for jpeg. */
+export function screenshotOptions(shot: { type?: "png" | "jpeg"; quality?: number }): {
+  type: "png" | "jpeg";
+  quality?: number;
+} {
+  const type = shot.type ?? "png";
+  return type === "jpeg" ? { type, quality: shot.quality } : { type };
+}
+
 export async function runScreenshot(
   profile: string | undefined,
   opts: PageOptions,
@@ -19,13 +28,9 @@ export async function runScreenshot(
   return runPage(resolverFor(profile), opts, async (page: Page) => {
     if (shot.selector) {
       const el = await page.waitForSelector(shot.selector);
-      return (await el!.screenshot({ type: shot.type ?? "png", quality: shot.quality })) as Buffer;
+      return (await el!.screenshot(screenshotOptions(shot))) as Buffer;
     }
-    return (await page.screenshot({
-      fullPage: shot.fullPage ?? false,
-      type: shot.type ?? "png",
-      quality: shot.type === "jpeg" ? shot.quality : undefined,
-    })) as Buffer;
+    return (await page.screenshot({ fullPage: shot.fullPage ?? false, ...screenshotOptions(shot) })) as Buffer;
   });
 }
 

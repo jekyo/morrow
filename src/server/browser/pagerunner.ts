@@ -74,7 +74,17 @@ export async function runPage<T>(
     await applyPageOptions(page as unknown as PageLike, opts);
     return await extract(page as unknown as Page);
   } finally {
-    if (page) await page.close().catch(() => {});
-    await release().catch(() => {});
+    // Cleanup must never mask the real outcome, and closing the page must never
+    // skip the release (an un-released ephemeral context leaks a browser).
+    if (page) await swallow(() => page!.close());
+    await swallow(release);
+  }
+}
+
+async function swallow(fn: () => Promise<unknown>): Promise<void> {
+  try {
+    await fn();
+  } catch {
+    // ignore
   }
 }

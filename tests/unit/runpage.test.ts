@@ -37,4 +37,27 @@ describe("runPage", () => {
     await expect(runPage(resolver, { url: "https://x.com" }, async () => { throw new Error("boom"); })).rejects.toThrow("boom");
     expect(stats()).toEqual({ closed: 1, pagesOpened: 1, pagesClosed: 1 });
   });
+
+  it("still releases the context when closing the page throws", async () => {
+    let released = 0;
+    const resolver: ContextResolver = {
+      async acquire() {
+        return {
+          context: {
+            async newPage() {
+              return {
+                setExtraHTTPHeaders: async () => {}, setViewportSize: async () => {}, route: async () => {},
+                goto: async () => null, setContent: async () => {}, waitForSelector: async () => {},
+                waitForTimeout: async () => {}, waitForFunction: async () => {},
+                close: () => { throw new Error("page already gone"); },
+              } as never;
+            },
+          } as never,
+          release: async () => { released++; },
+        };
+      },
+    };
+    expect(await runPage(resolver, { url: "https://x.com" }, async () => "extracted")).toBe("extracted");
+    expect(released).toBe(1);
+  });
 });

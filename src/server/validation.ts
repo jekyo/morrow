@@ -20,6 +20,16 @@ export const updateProfileSchema = z.object({
   viewport: z.object({ width: z.number().int().positive(), height: z.number().int().positive() }).optional(),
 });
 
+/** Patterns are compiled with `new RegExp` at request time — reject bad ones as 400, not 500. */
+function isRegex(pattern: string): boolean {
+  try {
+    new RegExp(pattern);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 // Base fields shared by content/screenshot/scrape requests. Kept refine-free so it can be
 // `.merge()`d with endpoint-specific fields; each *final* schema below applies its own single
 // `.refine()` requiring url-or-html. (Composing `.and()` on an already-`.refine()`d ZodEffects
@@ -46,7 +56,7 @@ const pageOptionsFields = z.object({
   bestAttempt: z.boolean().optional(),
   viewport: z.object({ width: z.number().int().positive(), height: z.number().int().positive() }).optional(),
   rejectResourceTypes: z.array(z.string()).optional(),
-  rejectRequestPattern: z.array(z.string()).optional(),
+  rejectRequestPattern: z.array(z.string().refine(isRegex, "must be a valid regular expression")).optional(),
   setExtraHTTPHeaders: z.record(z.string(), z.string()).optional(),
 });
 

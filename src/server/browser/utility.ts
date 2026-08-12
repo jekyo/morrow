@@ -2,7 +2,7 @@ import { firefox } from "playwright-core";
 import { launchServer } from "camoufox-js";
 import type { AcquiredContext, ContextResolver } from "@/server/browser/pagerunner";
 import { getProfileManager } from "@/server/profiles";
-import { globalSingleton } from "@/server/global";
+import { globalSingletonAsync } from "@/server/global";
 
 /** Runs inside a profile's persistent context — authenticated scraping. Never closes it. */
 export function profileResolver(name: string): ContextResolver {
@@ -34,10 +34,10 @@ export function ephemeralResolver(): ContextResolver {
 
 interface UtilityServer { wsEndpoint: string; }
 
+/** Lazily started once per process and reused; a failed launch is not cached. */
 async function utilityServer(): Promise<UtilityServer> {
-  const p = globalSingleton("utilityServerPromise", async (): Promise<UtilityServer> => {
+  return globalSingletonAsync("utilityServerPromise", async (): Promise<UtilityServer> => {
     const server = await launchServer({ headless: true } as Parameters<typeof launchServer>[0]);
     return { wsEndpoint: server.wsEndpoint() };
   });
-  return p;
 }
