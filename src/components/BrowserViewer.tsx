@@ -305,7 +305,13 @@ export function BrowserViewer({
           onWheel={(e) => {
             if (!controlling) return;
             e.preventDefault();
-            send({ type: "mouse", action: "wheel", dx: e.deltaX, dy: e.deltaY });
+            // Normalize to pixels: page.mouse.wheel() expects pixel deltas, but
+            // wheel events fire in line mode (deltaMode 1, deltaY≈3) on Firefox and
+            // some configs, or page mode (2). Passing those raw scrolls ~3px, which
+            // reads as "scroll doesn't work." A pixel-mode event (Chrome) is passed
+            // through unchanged.
+            const factor = e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? (frameSize?.height ?? 800) : 1;
+            send({ type: "mouse", action: "wheel", dx: e.deltaX * factor, dy: e.deltaY * factor });
           }}
           onContextMenu={(e) => controlling && e.preventDefault()}
           onKeyDown={(e) => {
