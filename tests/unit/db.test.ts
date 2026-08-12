@@ -79,3 +79,29 @@ describe("migrations", () => {
     expect(db.schemaVersion()).toBe(1);
   });
 });
+
+describe("sessions", () => {
+  it("creates, lists active, and closes sessions", () => {
+    const p = db.createProfile({ name: "a" });
+    const s = db.createSession(p.id, "playwright");
+    expect(s.id).toMatch(/^sess_/);
+    expect(s.profileId).toBe(p.id);
+    expect(s.kind).toBe("playwright");
+    expect(s.disconnectedAt).toBeNull();
+
+    const active = db.listActiveSessions();
+    expect(active).toHaveLength(1);
+    expect(active[0].profileName).toBe("a");
+
+    db.closeSession(s.id);
+    expect(db.listActiveSessions()).toHaveLength(0);
+  });
+
+  it("closeSession is idempotent and keeps the original disconnect time", () => {
+    const p = db.createProfile({ name: "a" });
+    const s = db.createSession(p.id, "viewer");
+    db.closeSession(s.id);
+    db.closeSession(s.id);
+    expect(db.listActiveSessions()).toHaveLength(0);
+  });
+});

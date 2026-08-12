@@ -18,6 +18,16 @@ export interface Profile {
   updatedAt: string;
 }
 
+export type SessionKind = "playwright" | "viewer" | "mcp" | "scrape";
+
+export interface Session {
+  id: string;
+  profileId: string;
+  kind: SessionKind;
+  connectedAt: string;
+  disconnectedAt: string | null;
+}
+
 export interface MorrowEvent {
   id: number;
   profileId: string | null;
@@ -238,6 +248,34 @@ export class MorrowDb {
     this.db.prepare(`DELETE FROM events WHERE profile_id = ?`).run(profileId);
     this.db.prepare(`DELETE FROM sessions WHERE profile_id = ?`).run(profileId);
     this.db.prepare(`DELETE FROM profiles WHERE id = ?`).run(profileId);
+  }
+
+  createSession(profileId: string, kind: SessionKind): Session {
+    const sessionId = id("sess");
+    this.db.prepare(`INSERT INTO sessions (id, profile_id, kind) VALUES (?, ?, ?)`).run(sessionId, profileId, kind);
+    const r = this.db.prepare(`SELECT * FROM sessions WHERE id = ?`).get(sessionId) as {
+      id: string; profile_id: string; kind: SessionKind; connected_at: string; disconnected_at: string | null;
+    };
+    return { id: r.id, profileId: r.profile_id, kind: r.kind, connectedAt: r.connected_at, disconnectedAt: r.disconnected_at };
+  }
+
+  closeSession(sessionId: string): void {
+    this.db
+      .prepare(`UPDATE sessions SET disconnected_at = datetime('now') WHERE id = ? AND disconnected_at IS NULL`)
+      .run(sessionId);
+  }
+
+  listActiveSessions(): Array<Session & { profileName: string }> {
+    const rows = this.db
+      .prepare(
+        `SELECT s.*, p.name AS profile_name FROM sessions s JOIN profiles p ON p.id = s.profile_id
+         WHERE s.disconnected_at IS NULL ORDER BY s.connected_at`
+      )
+      .all() as Array<{ id: string; profile_id: string; kind: SessionKind; connected_at: string; disconnected_at: string | null; profile_name: string }>;
+    return rows.map((r) => ({
+      id: r.id, profileId: r.profile_id, kind: r.kind,
+      connectedAt: r.connected_at, disconnectedAt: r.disconnected_at, profileName: r.profile_name,
+    }));
   }
 }
 
