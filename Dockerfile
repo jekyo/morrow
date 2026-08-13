@@ -1,9 +1,11 @@
 FROM node:22-bookworm-slim AS base
 
-# Firefox/Camoufox runtime libs + Xvfb (per-profile displays in Plan 2) + curl for probes
+# Firefox/Camoufox runtime libs + Xvfb (per-profile displays) + curl for probes.
+# x11vnc + openbox back the noVNC viewer: openbox maps/sizes the browser window
+# on each Xvfb display, x11vnc serves it over RFB (see src/server/browser/display.ts).
 # python3/make/g++ are needed by node-gyp to build the better-sqlite3 native addon
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    xvfb x11-utils curl ca-certificates \
+    xvfb x11-utils x11vnc openbox curl ca-certificates \
     python3 make g++ \
     libgtk-3-0 libdbus-glib-1-2 libasound2 libx11-xcb1 libxtst6 \
     libxrandr2 libpangocairo-1.0-0 libatk1.0-0 libcairo-gobject2 \

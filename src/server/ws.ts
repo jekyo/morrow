@@ -4,10 +4,10 @@ import { WebSocketServer, type WebSocket } from "ws";
 import { extractToken, isAuthorized } from "@/server/auth";
 import type { Config } from "@/server/config";
 
-export type WsRoute = { kind: "playwright" | "viewer"; profileName: string };
+export type WsRoute = { kind: "playwright" | "viewer" | "vnc"; profileName: string };
 
 export function matchWsRoute(pathname: string): WsRoute | undefined {
-  const m = pathname.match(/^\/(playwright|viewer)\/([^/]+)$/);
+  const m = pathname.match(/^\/(playwright|viewer|vnc)\/([^/]+)$/);
   if (!m) return undefined;
   try {
     return { kind: m[1] as WsRoute["kind"], profileName: decodeURIComponent(m[2]) };
@@ -20,7 +20,7 @@ export type WsHandler = (ws: WebSocket, route: WsRoute, req: IncomingMessage) =>
 
 /** A path that looks like an attempted (but malformed) Morrow ws route. */
 function isMalformedMorrowPath(pathname: string): boolean {
-  return /^\/(playwright|viewer)(\/|$)/.test(pathname);
+  return /^\/(playwright|viewer|vnc)(\/|$)/.test(pathname);
 }
 
 /**

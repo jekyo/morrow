@@ -4,6 +4,7 @@ import { firefox } from "playwright-core";
 import type { Profile } from "@/server/db";
 import type { BrowserRuntime, RunningBrowser } from "@/server/browser/runtime";
 import { resolveProxyEgress, type ProxyEgress } from "@/server/browser/geo";
+import { startDisplay, type DisplaySession } from "@/server/browser/display";
 
 /**
  * The three properties camoufox-js's launchOptions() randomizes on EVERY
@@ -83,6 +84,13 @@ export function buildCamoufoxOptions(
      * (falls back to geoip:true too, same as undefined).
      */
     proxyEgress?: ProxyEgress | null;
+    /**
+     * When present, the browser runs HEADFUL into this profile's private Xvfb
+     * display (so x11vnc/noVNC can stream it) instead of headless. Headful in a
+     * virtual display is also less fingerprintable than true headless. See
+     * display.ts for the recipe and the env/pref flags required.
+     */
+    display?: DisplaySession;
   }
 ): Record<string, unknown> {
   const stored = opts.fingerprint as StoredFingerprint;
@@ -94,10 +102,24 @@ export function buildCamoufoxOptions(
     _sharedBrowser: true,
     fingerprint: stored.fingerprint,
     config,
-    headless: true,
     // Camoufox handles cache persistence inside the profile dir
     enable_cache: true,
   };
+  if (opts.display) {
+    // Render into the profile's Xvfb display. `browserEnv` already carries the
+    // DISPLAY, software-GL flags, and stripped Wayland vars (display.ts).
+    o.headless = false;
+    o.env = opts.display.browserEnv;
+    o.firefox_user_prefs = {
+      ...(o.firefox_user_prefs as Record<string, unknown> | undefined),
+      // No GPU in Xvfb: force the software WebRender backend or the window
+      // never paints (framebuffer stays black).
+      "gfx.webrender.software": true,
+      "layers.acceleration.disabled": true,
+    };
+  } else {
+    o.headless = true;
+  }
   if (profile.proxy) o.proxy = profile.proxy;
   if (profile.locale) o.locale = profile.locale;
   if (profile.timezone) {
@@ -171,7 +193,10 @@ export class CamoufoxRuntime implements BrowserRuntime {
     return stored;
   }
 
-  async start(profile: Profile, opts: { profileDir: string; fingerprint: unknown }): Promise<RunningBrowser> {
+  async start(
+    profile: Profile,
+    opts: { profileDir: string; fingerprint: unknown; vnc?: boolean }
+  ): Promise<RunningBrowser> {
     // Resolve the proxy's real egress IP ourselves (see geo.ts / P0-WEBRTC) before
     // launch, so webrtc:ipv4/timezone/geo can be seeded from the CORRECT IP instead
     // of camoufox's own geoip:true (which doesn't reliably route its lookup through
@@ -181,28 +206,54 @@ export class CamoufoxRuntime implements BrowserRuntime {
     // falls back to the existing geoip:true path below.
     const proxyEgress =
       profile.proxy && !profile.timezone ? await resolveProxyEgress(profile.proxy).catch(() => null) : undefined;
-    let server;
-    try {
-      server = await launchServer(
-        buildCamoufoxOptions(profile, { ...opts, proxyEgress }) as Parameters<typeof launchServer>[0]
-      );
-    } catch (err) {
-      // geoip does a live public-IP lookup (through the proxy) before the browser
-      // process spawns; if every IP endpoint is unreachable it throws. Don't brick
-      // the profile — retry once without geoip (falls back to the host timezone).
-      // (Only reachable when proxyEgress is null/undefined — the resolved-egress
-      // path above never sets geoip:true, see buildCamoufoxOptions.)
-      if (isGeoipLookupError(err) && !profile.timezone) {
+
+    // Bring up the profile's private Xvfb+x11vnc desktop so it can be viewed
+    // over noVNC (opts.vnc). Best-effort: if the display stack can't start
+    // (tooling missing, etc.) we fall back to headless rather than failing the
+    // launch — the browser still works, just without a live view.
+    let display: DisplaySession | undefined;
+    if (opts.vnc !== false) {
+      const [width, height] =
+        profile.viewportWidth && profile.viewportHeight
+          ? [profile.viewportWidth, profile.viewportHeight]
+          : [1280, 800];
+      try {
+        display = await startDisplay({ width, height });
+      } catch (err) {
         console.warn(
-          `geoip lookup failed for profile ${profile.name}, starting without it:`,
+          `viewer display unavailable for profile ${profile.name}, starting headless:`,
           err instanceof Error ? err.message : err
         );
-        server = await launchServer(
-          buildCamoufoxOptions(profile, { ...opts, geoip: false, proxyEgress }) as Parameters<typeof launchServer>[0]
-        );
-      } else {
-        throw err;
       }
+    }
+
+    let server;
+    try {
+      try {
+        server = await launchServer(
+          buildCamoufoxOptions(profile, { ...opts, proxyEgress, display }) as Parameters<typeof launchServer>[0]
+        );
+      } catch (err) {
+        // geoip does a live public-IP lookup (through the proxy) before the browser
+        // process spawns; if every IP endpoint is unreachable it throws. Don't brick
+        // the profile — retry once without geoip (falls back to the host timezone).
+        // (Only reachable when proxyEgress is null/undefined — the resolved-egress
+        // path above never sets geoip:true, see buildCamoufoxOptions.)
+        if (isGeoipLookupError(err) && !profile.timezone) {
+          console.warn(
+            `geoip lookup failed for profile ${profile.name}, starting without it:`,
+            err instanceof Error ? err.message : err
+          );
+          server = await launchServer(
+            buildCamoufoxOptions(profile, { ...opts, geoip: false, proxyEgress, display }) as Parameters<typeof launchServer>[0]
+          );
+        } else {
+          throw err;
+        }
+      }
+    } catch (err) {
+      await display?.close().catch(() => {});
+      throw err;
     }
     const wsEndpoint = server.wsEndpoint();
     // Morrow's own handle on the shared persistent context — a stock client
@@ -211,6 +262,7 @@ export class CamoufoxRuntime implements BrowserRuntime {
     const context = internal.contexts()[0];
     if (!context) {
       await server.close().catch(() => {});
+      await display?.close().catch(() => {});
       throw new Error(
         "browser server exposed no shared context — _sharedBrowser regression, see attach-spike.md"
       );
@@ -224,13 +276,21 @@ export class CamoufoxRuntime implements BrowserRuntime {
       .catch(() => {});
     let resolveClosed!: () => void;
     const closed = new Promise<void>((r) => (resolveClosed = r));
-    server.on("close", resolveClosed);
+    // A crash (server 'close' without an explicit close()) must also tear down
+    // the display stack so we don't leak Xvfb/x11vnc processes. close() is
+    // idempotent, so calling it here and from close() below is safe.
+    server.on("close", () => {
+      void display?.close().catch(() => {});
+      resolveClosed();
+    });
     return {
       context,
       wsEndpoint,
+      vncPort: display?.vncPort,
       closed,
       close: async () => {
         await server.close().catch(() => {});
+        await display?.close().catch(() => {});
       },
     };
   }

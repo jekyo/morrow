@@ -198,7 +198,9 @@ describe("CamoufoxRuntime.generateFingerprint", () => {
     const stored = runtime.generateFingerprint({ ...base, os: "linux" }) as {
       fingerprint: { navigator: { userAgent: string } };
     };
-    expect(stored.fingerprint.navigator.userAgent).toMatch(/X11; Linux/);
+    // The pool includes distro-tagged UAs (e.g. "X11; Ubuntu; Linux x86_64"),
+    // so allow an optional token between "X11;" and "Linux".
+    expect(stored.fingerprint.navigator.userAgent).toMatch(/X11;.*Linux/);
   });
 
   it("falls back to windows for an unrecognized os value", () => {

@@ -89,7 +89,7 @@ export class ProfileManager {
       mkdirSync(profileDir, { recursive: true });
 
       const browser = await this.withTimeout(
-        this.runtime.start(profile, { profileDir, fingerprint }),
+        this.runtime.start(profile, { profileDir, fingerprint, vnc: true }),
         this.cfg.launchTimeoutMs
       );
 

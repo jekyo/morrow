@@ -4,12 +4,18 @@ import Link from "next/link";
 import { Globe } from "lucide-react";
 import { useParams, useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
-import { BrowserViewer } from "@/components/BrowserViewer";
+import dynamic from "next/dynamic";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { StatusBadge } from "@/components/StatusBadge";
 import { Timeline } from "@/components/Timeline";
 import { formatRelativeTime } from "@/lib/format";
 import { useApiKey, useClient, useEvents, useProfile, useSessions } from "@/lib/useApi";
+
+// @novnc/novnc touches `window` at import time, so it must never be evaluated
+// during SSR — load the viewer client-side only.
+const VncViewer = dynamic(() => import("@/components/VncViewer").then((m) => m.VncViewer), {
+  ssr: false,
+});
 
 const DEFAULT_VIEWPORT = { width: 1280, height: 800 };
 
@@ -112,7 +118,7 @@ export default function ProfileDetailPage() {
       <div className="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-[1fr_320px]">
         <div className="flex flex-col gap-6">
           {shouldShowViewer && token ? (
-            <BrowserViewer name={name} token={token} viewportHint={profile.viewport ?? DEFAULT_VIEWPORT} />
+            <VncViewer name={name} token={token} />
           ) : (
             <div
               className="border-neutral bg-base-200 flex items-center justify-center rounded-lg border"

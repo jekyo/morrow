@@ -7,6 +7,7 @@ import { getDb } from "@/server/db";
 import { createUpgradeHandler } from "@/server/ws";
 import { playwrightAttachHandler, defaultAttachDeps } from "@/server/attach";
 import { viewerHandler, defaultViewerDeps } from "@/server/viewer-handler";
+import { vncHandler, defaultVncDeps } from "@/server/vnc-handler";
 import { mcpHandler } from "@/server/mcp/handler";
 
 const dev = process.env.NODE_ENV !== "production";
@@ -65,6 +66,7 @@ async function main() {
       {
         playwright: playwrightAttachHandler(defaultAttachDeps()),
         viewer: viewerHandler(defaultViewerDeps()),
+        vnc: vncHandler(defaultVncDeps()),
       },
       (req, socket, head) => {
         void nextUpgradeHandler(req, socket, head);
