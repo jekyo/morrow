@@ -90,8 +90,23 @@ async function waitForPort(port: number, timeoutMs: number): Promise<void> {
   throw new Error(`nothing listening on port ${port} after ${timeoutMs}ms`);
 }
 
-function spawnBg(cmd: string, args: string[], env: NodeJS.ProcessEnv): ChildProcess {
-  return spawn(cmd, args, { stdio: ["ignore", "ignore", "pipe"], env });
+/**
+ * Spawn a background process and capture its async `'error'` event (e.g. ENOENT
+ * for a missing binary). Node crashes the whole process with an *uncaught
+ * exception* if a spawn `'error'` has no listener, so every child gets one.
+ * `failed` resolves — never rejects — with the error, so it can be raced or
+ * left dangling without ever producing an unhandled rejection.
+ */
+function spawnBg(
+  cmd: string,
+  args: string[],
+  env: NodeJS.ProcessEnv
+): { child: ChildProcess; failed: Promise<Error> } {
+  const child = spawn(cmd, args, { stdio: ["ignore", "ignore", "pipe"], env });
+  const failed = new Promise<Error>((resolve) => {
+    child.once("error", (e) => resolve(e instanceof Error ? e : new Error(String(e))));
+  });
+  return { child, failed };
 }
 
 /**
@@ -126,7 +141,7 @@ export async function startDisplay(opts: DisplayOptions = {}): Promise<DisplaySe
     // 2. Window manager: maps and sizes the browser's top-level window so it
     //    fills the screen. Without one the window never maps and RFB is blank.
     const openbox = spawnBg(openboxBin, [], env);
-    procs.push(openbox);
+    procs.push(openbox.child);
 
     // 3. x11vnc serving this display on a private localhost port.
     const vncPort = await freePort();
@@ -136,16 +151,27 @@ export async function startDisplay(opts: DisplayOptions = {}): Promise<DisplaySe
        "-forever", "-shared", "-nopw", "-noxdamage", "-repeat", "-quiet"],
       env
     );
-    procs.push(x11vnc);
+    procs.push(x11vnc.child);
     let x11vncErr = "";
-    x11vnc.stderr?.on("data", (d) => { x11vncErr += String(d); });
-    x11vnc.once("exit", (code) => {
+    x11vnc.child.stderr?.on("data", (d) => { x11vncErr += String(d); });
+    x11vnc.child.once("exit", (code) => {
       if (code) console.error(`x11vnc for ${display} exited (${code}): ${x11vncErr.slice(-200)}`);
     });
 
-    await waitForPort(vncPort, 8_000).catch((e) => {
-      throw new Error(`x11vnc failed to serve ${display}: ${e.message} ${x11vncErr.slice(-200)}`);
-    });
+    // Wait for x11vnc to accept connections, but bail immediately if openbox or
+    // x11vnc failed to spawn at all (e.g. binary missing) instead of hanging
+    // until the timeout. Every branch resolves — none reject — so the losers
+    // settling late can't raise an unhandled rejection.
+    const outcome = await Promise.race([
+      waitForPort(vncPort, 8_000).then(() => ({ ok: true as const })),
+      openbox.failed.then((e) => ({ ok: false as const, who: "openbox", err: e })),
+      x11vnc.failed.then((e) => ({ ok: false as const, who: "x11vnc", err: e })),
+    ]).catch((e: Error) => ({ ok: false as const, who: "x11vnc", err: e }));
+    if (!outcome.ok) {
+      throw new Error(
+        `${outcome.who} failed to start for ${display}: ${outcome.err.message} ${x11vncErr.slice(-200)}`.trim()
+      );
+    }
 
     let closed = false;
     return {
@@ -200,6 +226,9 @@ async function startXvfb(
       let settled = false;
       const done = (v: boolean) => { if (!settled) { settled = true; resolve(v); } };
       xvfb.once("exit", () => done(false));
+      // A missing Xvfb binary emits 'error' (not 'exit'); handle it so it can't
+      // escape as an uncaught exception, and treat it as a failed attempt.
+      xvfb.once("error", (e) => { err = e instanceof Error ? e.message : String(e); done(false); });
       const deadline = Date.now() + 5000;
       const poll = setInterval(() => {
         if (displayReady(n)) { clearInterval(poll); done(true); }
