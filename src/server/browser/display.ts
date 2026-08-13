@@ -117,9 +117,9 @@ function spawnBg(
 export async function startDisplay(opts: DisplayOptions = {}): Promise<DisplaySession> {
   const width = opts.width ?? DEFAULT_WIDTH;
   const height = opts.height ?? DEFAULT_HEIGHT;
-  const xvfbBin = opts.bin?.xvfb ?? "Xvfb";
-  const openboxBin = opts.bin?.openbox ?? "openbox";
-  const x11vncBin = opts.bin?.x11vnc ?? "x11vnc";
+  const xvfbBin = opts.bin?.xvfb ?? process.env.MORROW_XVFB_BIN ?? "Xvfb";
+  const openboxBin = opts.bin?.openbox ?? process.env.MORROW_OPENBOX_BIN ?? "openbox";
+  const x11vncBin = opts.bin?.x11vnc ?? process.env.MORROW_X11VNC_BIN ?? "x11vnc";
 
   const env = cleanGraphicsEnv();
   const procs: ChildProcess[] = [];

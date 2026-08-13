@@ -21,6 +21,7 @@ jobs:
 
   integration:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -33,4 +34,9 @@ jobs:
           path: ~/.cache/camoufox
           key: camoufox-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
       - run: npx camoufox-js fetch
+      # The runner has no x11vnc/openbox, so run browsers headless with no
+      # display stack (the viewer is smoke-tested against the built image, not
+      # here). MORROW_VIEWER=off keeps these persistence tests fast and stable.
       - run: npm run test:integration
+        env:
+          MORROW_VIEWER: off

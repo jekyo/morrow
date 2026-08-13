@@ -23,6 +23,17 @@ export interface RunningProfile {
  * src/server/browser/camoufox.ts). No release shipped the old shape, so this
  * only guards dev machines that started a profile before the format changed.
  */
+/**
+ * Whether to bring up the per-profile Xvfb+x11vnc desktop so the browser can be
+ * viewed over noVNC. On by default; set MORROW_VIEWER=off (or 0/false) to run
+ * browsers headless with no display stack — for environments that lack the VNC
+ * binaries (e.g. CI) or want to shed the overhead.
+ */
+function viewerEnabled(): boolean {
+  const v = process.env.MORROW_VIEWER?.trim().toLowerCase();
+  return v !== "off" && v !== "0" && v !== "false";
+}
+
 function hasSeeds(fp: unknown): boolean {
   return (
     typeof fp === "object" &&
@@ -89,7 +100,7 @@ export class ProfileManager {
       mkdirSync(profileDir, { recursive: true });
 
       const browser = await this.withTimeout(
-        this.runtime.start(profile, { profileDir, fingerprint, vnc: true }),
+        this.runtime.start(profile, { profileDir, fingerprint, vnc: viewerEnabled() }),
         this.cfg.launchTimeoutMs
       );
 
