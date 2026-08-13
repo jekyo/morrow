@@ -33,8 +33,9 @@ export class ViewerHub {
   private timer: ReturnType<typeof setInterval> | null = null;
   private seq = 0;
   private busy = false;
-  /** Tail of the input-application queue; see input() for why serialization matters. */
-  private inputTail: Promise<unknown> = Promise.resolve();
+  /** Pending input applied serially; consecutive moves are coalesced (see input()). */
+  private inputQueue: InputMessage[] = [];
+  private draining = false;
 
   constructor(private page: ViewerPage, private opts: { fps: number; quality?: number } = { fps: 10 }) {}
 
@@ -78,17 +79,33 @@ export class ViewerHub {
     }
   }
 
-  async input(controllerId: string, msg: InputMessage): Promise<void> {
+  input(controllerId: string, msg: InputMessage): void {
     if (!this.lock.has(controllerId)) return;
-    // Serialize input: page.mouse/keyboard are stateful and are NOT safe to drive
-    // concurrently. The ws handler dispatches input fire-and-forget, so without a
-    // queue a burst of mouse-move events would race the down/up — the click lands
-    // at a stale position or is lost entirely ("mouse doesn't work" under real
-    // movement, while keyboard, which isn't flooded, keeps working). Chaining on a
-    // single tail promise applies every event in strict arrival order, one at a time.
-    const run = this.inputTail.then(() => this.applyInput(msg));
-    this.inputTail = run.catch(() => {});
-    return run;
+    // page.mouse/keyboard are stateful and NOT safe to drive concurrently, so we
+    // apply input serially from a queue (in arrival order). But a real mouse fires
+    // hundreds of moves/second: queued naively they back up and block keyboard/clicks
+    // behind them ("keyboard stalls while moving"). So we COALESCE consecutive moves
+    // — a run of hover moves collapses to just the latest position — while preserving
+    // order across down/up/keys (a down breaks the run, so drags keep their path).
+    const last = this.inputQueue[this.inputQueue.length - 1];
+    if (msg.type === "mouse" && msg.action === "move" && last?.type === "mouse" && last.action === "move") {
+      this.inputQueue[this.inputQueue.length - 1] = msg;
+    } else {
+      this.inputQueue.push(msg);
+    }
+    if (!this.draining) void this.drain();
+  }
+
+  private async drain(): Promise<void> {
+    this.draining = true;
+    try {
+      let msg: InputMessage | undefined;
+      while ((msg = this.inputQueue.shift())) {
+        await this.applyInput(msg).catch((err) => console.error("viewer input failed", err));
+      }
+    } finally {
+      this.draining = false;
+    }
   }
 
   private async applyInput(msg: InputMessage): Promise<void> {

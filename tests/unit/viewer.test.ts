@@ -55,9 +55,10 @@ describe("ViewerHub", () => {
     const { page, calls } = fakePage();
     const hub = new ViewerHub(page, { fps: 10 });
     hub.lock.take("v1");
-    await hub.input("v1", { type: "mouse", action: "move", x: 10, y: 20 });
-    await hub.input("v2", { type: "mouse", action: "move", x: 99, y: 99 }); // not holder
-    await hub.input("v1", { type: "key", action: "type", text: "hello" });
+    hub.input("v1", { type: "mouse", action: "move", x: 10, y: 20 });
+    hub.input("v2", { type: "mouse", action: "move", x: 99, y: 99 }); // not holder
+    hub.input("v1", { type: "key", action: "type", text: "hello" });
+    await vi.advanceTimersByTimeAsync(1); // let the input queue drain
     expect(calls).toEqual(["move:10,20", "type:hello"]);
   });
 

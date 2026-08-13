@@ -14,7 +14,7 @@ export interface ViewerAttachment {
   lockHolder(): string | null;
   takeControl(viewerId: string): boolean;
   releaseControl(viewerId: string): void;
-  input(viewerId: string, msg: InputMessage): Promise<void>;
+  input(viewerId: string, msg: InputMessage): void;
   navigate(viewerId: string, url: string): Promise<void>;
   subscribe(fn: (f: Frame) => void): () => void;
   onDisconnect(viewerId: string): void;
@@ -97,7 +97,7 @@ async function run(ws: WebSocket, name: string, viewerId: string, deps: ViewerDe
       att.releaseControl(viewerId);
       sendStatus();
     } else if (msg.type === "input" && msg.input) {
-      void att.input(viewerId, msg.input).catch((err) => console.error("viewer input failed", err));
+      att.input(viewerId, msg.input);
     } else if (msg.type === "navigate" && typeof msg.url === "string") {
       void att.navigate(viewerId, msg.url).catch((err) => console.error("viewer navigate failed", err));
     }
