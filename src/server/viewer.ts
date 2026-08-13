@@ -33,6 +33,8 @@ export class ViewerHub {
   private timer: ReturnType<typeof setInterval> | null = null;
   private seq = 0;
   private busy = false;
+  /** Tail of the input-application queue; see input() for why serialization matters. */
+  private inputTail: Promise<unknown> = Promise.resolve();
 
   constructor(private page: ViewerPage, private opts: { fps: number; quality?: number } = { fps: 10 }) {}
 
@@ -78,6 +80,18 @@ export class ViewerHub {
 
   async input(controllerId: string, msg: InputMessage): Promise<void> {
     if (!this.lock.has(controllerId)) return;
+    // Serialize input: page.mouse/keyboard are stateful and are NOT safe to drive
+    // concurrently. The ws handler dispatches input fire-and-forget, so without a
+    // queue a burst of mouse-move events would race the down/up — the click lands
+    // at a stale position or is lost entirely ("mouse doesn't work" under real
+    // movement, while keyboard, which isn't flooded, keeps working). Chaining on a
+    // single tail promise applies every event in strict arrival order, one at a time.
+    const run = this.inputTail.then(() => this.applyInput(msg));
+    this.inputTail = run.catch(() => {});
+    return run;
+  }
+
+  private async applyInput(msg: InputMessage): Promise<void> {
     if (msg.type === "mouse") {
       if (msg.action === "move") await this.page.mouse.move(msg.x ?? 0, msg.y ?? 0);
       else if (msg.action === "down") await this.page.mouse.down();

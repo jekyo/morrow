@@ -71,6 +71,11 @@ export function BrowserViewer({
   const retryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const retryDelayRef = useRef(BASE_BACKOFF_MS);
   const mountedRef = useRef(true);
+  // Coalesce mouse-move sends to one per animation frame (~60/s). A raw move per
+  // DOM event is hundreds/s, which floods the socket and backs up input on the
+  // server so clicks lag or miss. Only the latest position matters between frames.
+  const pendingMoveRef = useRef<{ x: number; y: number } | null>(null);
+  const moveRafRef = useRef(0);
 
   const [connState, setConnState] = useState<ConnState>("connecting");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -159,6 +164,8 @@ export function BrowserViewer({
       cancelled = true;
       mountedRef.current = false;
       if (retryTimerRef.current) clearTimeout(retryTimerRef.current);
+      if (moveRafRef.current) cancelAnimationFrame(moveRafRef.current);
+      moveRafRef.current = 0;
       wsRef.current?.close();
       wsRef.current = null;
     };
@@ -188,6 +195,17 @@ export function BrowserViewer({
   function send(input: InputMessage) {
     const ws = wsRef.current;
     if (ws?.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: "input", input }));
+  }
+
+  /** Send a mouse move at most once per animation frame, keeping only the latest. */
+  function queueMove(coords: { x: number; y: number }) {
+    pendingMoveRef.current = coords;
+    if (moveRafRef.current) return;
+    moveRafRef.current = requestAnimationFrame(() => {
+      moveRafRef.current = 0;
+      const c = pendingMoveRef.current;
+      if (c) send({ type: "mouse", action: "move", x: c.x, y: c.y });
+    });
   }
 
   function toBrowserCoords(e: { clientX: number; clientY: number }): { x: number; y: number } {
@@ -293,11 +311,14 @@ export function BrowserViewer({
           ref={canvasRef}
           tabIndex={controlling ? 0 : -1}
           className={`block h-full w-full object-contain ${controlling ? "cursor-default focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary focus-visible:outline-offset-[-2px]" : "cursor-default"}`}
-          onMouseMove={(e) => controlling && send({ type: "mouse", action: "move", ...toBrowserCoords(e) })}
+          onMouseMove={(e) => controlling && queueMove(toBrowserCoords(e))}
           onMouseDown={(e) => {
             if (!controlling) return;
             e.preventDefault();
             canvasRef.current?.focus();
+            // Cancel any queued (throttled) move and send this exact position now,
+            // so the click lands where the button is pressed, not a stale frame's spot.
+            pendingMoveRef.current = null;
             send({ type: "mouse", action: "move", ...toBrowserCoords(e) });
             send({ type: "mouse", action: "down" });
           }}
