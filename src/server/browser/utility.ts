@@ -19,20 +19,37 @@ export function ephemeralResolver(): ContextResolver {
   return {
     async acquire(): Promise<AcquiredContext> {
       const server = await utilityServer();
-      const browser = await firefox.connect(server.wsEndpoint);
-      const context = await browser.newContext();
+      // The slot is taken before the connection is made, so a server cannot
+      // decide it has drained while a caller is still on its way in.
       server.handed += 1;
       server.open += 1;
+      // Retire on the way in, not on the way out. A spent server must stop
+      // taking new work the moment it is spent; waiting for a quiet moment to
+      // decide means never deciding, because a caller that keeps several
+      // fetches in flight never has one.
+      retireWhenDrained(server);
+
+      let browser;
+      let context;
+      try {
+        browser = await firefox.connect(server.wsEndpoint);
+        context = await browser.newContext();
+      } catch (err) {
+        server.open -= 1;
+        await closeIfDrained(server);
+        throw err;
+      }
+
       let released = false;
       return {
         context,
         release: async () => {
-          if (released) return; // releasing twice must not retire a live server
+          if (released) return; // releasing twice must not close a live server
           released = true;
           await context.close().catch(() => {});
           await browser.close().catch(() => {});
           server.open -= 1;
-          await retireIfSpent(server);
+          await closeIfDrained(server);
         },
       };
     },
@@ -73,35 +90,38 @@ interface UtilityServer {
   handed: number;
   /** Contexts handed out and not yet released. */
   open: number;
+  /** Out of service: taking no new contexts, draining the ones it has. */
   retiring: boolean;
+  closed: boolean;
 }
 
 /**
- * Retire a spent server once nothing is using it.
+ * Take a spent server out of service immediately.
  *
- * The singleton is dropped before the process is closed, so a request
- * arriving mid-retirement starts a fresh browser rather than connecting to
- * one that is going away. Anything still open keeps its own reference and
- * finishes normally.
+ * Dropping the singleton is what retires it: the next caller finds nothing
+ * cached and launches a fresh browser, while the contexts already on this one
+ * hold their own reference and finish normally. The process itself closes in
+ * `closeIfDrained` once the last of them lets go.
+ *
+ * This runs when a context is handed out rather than when one is released,
+ * because the condition "nothing is using it" is never true on a caller that
+ * keeps several fetches in flight. Deciding on the way out meant never
+ * deciding, and the browser grew until it was killed.
  */
-async function retireIfSpent(server: UtilityServer): Promise<void> {
+function retireWhenDrained(server: UtilityServer): void {
   const max = maxContexts();
   if (max <= 0 || server.retiring) return;
-  if (server.handed < max || server.open > 0) return;
+  if (server.handed < max) return;
 
   server.retiring = true;
-  const current = await peekUtilityServer();
-  if (current === server) dropGlobalSingleton(SINGLETON_KEY);
-  await server.close().catch(() => {});
+  dropGlobalSingleton(SINGLETON_KEY);
 }
 
-/** The cached server, or undefined when none has been started. */
-async function peekUtilityServer(): Promise<UtilityServer | undefined> {
-  const s = (globalThis as Record<string, unknown>).__morrow as
-    | Record<string, unknown>
-    | undefined;
-  const promise = s?.[SINGLETON_KEY] as Promise<UtilityServer> | undefined;
-  return promise ? promise.catch(() => undefined) : undefined;
+/** Close a retired server once its last context has been released. */
+async function closeIfDrained(server: UtilityServer): Promise<void> {
+  if (!server.retiring || server.closed || server.open > 0) return;
+  server.closed = true;
+  await server.close().catch(() => {});
 }
 
 /** Lazily started and reused; a failed launch is not cached. */
@@ -114,6 +134,7 @@ async function utilityServer(): Promise<UtilityServer> {
       handed: 0,
       open: 0,
       retiring: false,
+      closed: false,
     };
   });
 }

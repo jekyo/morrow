@@ -72,7 +72,7 @@ describe("the utility browser is recycled", () => {
 
   // Retiring a server with work still on it is the outage this prevents,
   // arriving on a schedule instead of at random.
-  it("waits for the last context to close before retiring", async () => {
+  it("waits for the last context to close before closing the process", async () => {
     process.env.MORROW_UTILITY_MAX_CONTEXTS = "2";
 
     const held = await ephemeralResolver().acquire();
@@ -81,6 +81,51 @@ describe("the utility browser is recycled", () => {
 
     await held.release();
     expect(servers[0].closed).toBe(true);
+  });
+
+  // The case that defeated the first attempt at this. A caller holding several
+  // fetches in flight never leaves the server idle, so a retirement that waits
+  // for `open === 0` before taking the server out of service waits forever and
+  // the browser grows until it is killed. Retirement has to happen on the way
+  // in: new work goes to a fresh server while the spent one drains.
+  it("retires under sustained concurrency, with nothing ever idle", async () => {
+    process.env.MORROW_UTILITY_MAX_CONTEXTS = "4";
+
+    // Four always in flight: one is released only after its replacement has
+    // been acquired, so the count never reaches zero.
+    let held = await ephemeralResolver().acquire();
+    const inflight = [
+      await ephemeralResolver().acquire(),
+      await ephemeralResolver().acquire(),
+      await ephemeralResolver().acquire(),
+    ];
+
+    for (let i = 0; i < 20; i++) {
+      const next = await ephemeralResolver().acquire();
+      await held.release();
+      held = next;
+    }
+    await held.release();
+    for (const c of inflight) await c.release();
+
+    // 24 contexts at a quota of 4 is several generations, not one.
+    expect(launches).toBeGreaterThan(1);
+    expect(servers.filter((s) => s.closed).length).toBeGreaterThan(0);
+  });
+
+  // A server that has been taken out of service must not be handed to anyone
+  // new, or the replacement never gets used and the quota means nothing.
+  it("sends work to a fresh server the moment the old one is spent", async () => {
+    process.env.MORROW_UTILITY_MAX_CONTEXTS = "1";
+
+    const first = await ephemeralResolver().acquire(); // spends server 1
+    const second = await ephemeralResolver().acquire(); // must not be server 1
+    expect(launches).toBe(2);
+
+    await first.release();
+    expect(servers[0].closed).toBe(true); // drained and closed
+    expect(servers[1].closed).toBe(false); // still serving
+    await second.release();
   });
 
   it("does not retire a server because a release arrived twice", async () => {
