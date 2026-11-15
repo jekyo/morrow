@@ -29,3 +29,12 @@ export function globalSingletonAsync<T>(key: string, create: () => Promise<T>): 
   s[key] = promise;
   return promise;
 }
+
+/**
+ * Forget a singleton so the next caller creates a fresh one. The value itself
+ * is untouched, so a caller still holding it keeps working — which is what
+ * lets a resource be retired while the work already using it finishes.
+ */
+export function dropGlobalSingleton(key: string): void {
+  delete store()[key];
+}
