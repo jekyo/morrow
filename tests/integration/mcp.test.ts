@@ -97,8 +97,15 @@ describe.runIf(enabled)("mcp integration (real camoufox, real MCP client)", () =
     const snapResult = json(snap) as { url?: string; title?: string; snapshot?: string };
     // Assert on the *real* aria tree example.com produces, not on a constant we
     // control — the snapshot must actually reflect the live page.
+    //
+    // The anchor is a role plus an accessible name, because that is what shows
+    // the tree was built rather than the HTML echoed back. It was the <h1>
+    // until IANA redesigned example.com to lead with an image and no heading,
+    // which left this failing against a page that was serving perfectly well.
+    // Expect to move it again at the next redesign: pick whichever landmark
+    // the page then has, not whichever string is easiest to match.
     expect(snapResult.title).toContain("Example Domain");
-    expect(snapResult.snapshot).toContain('heading "Example Domain"');
+    expect(snapResult.snapshot).toContain('link "Learn more"');
     expect(snapResult.snapshot).toContain("[ref=");
 
     const shot = await call("screenshot", { profile: PROFILE });
