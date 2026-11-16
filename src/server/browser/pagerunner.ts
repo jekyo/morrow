@@ -81,10 +81,31 @@ export async function runPage<T>(
   }
 }
 
+/** How long a cleanup call is given before it is abandoned. */
+const CLEANUP_TIMEOUT_MS = 10_000;
+
+/**
+ * Run `fn` and continue regardless of how it ends, including not ending.
+ *
+ * A rejection was always handled here. A call that never settles was not, and
+ * that is the one that mattered: `page.close()` against a renderer that has
+ * crashed can stay pending indefinitely, and then everything after it never
+ * runs — above all the release that frees the browser's context. A context
+ * that is never released keeps its browser from being reaped, and that
+ * process holds every megabyte it has grown until the container is killed.
+ */
 async function swallow(fn: () => Promise<unknown>): Promise<void> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
   try {
-    await fn();
+    await Promise.race([
+      fn(),
+      new Promise<never>((_resolve, reject) => {
+        timer = setTimeout(() => reject(new Error("cleanup timed out")), CLEANUP_TIMEOUT_MS);
+      }),
+    ]);
   } catch {
     // ignore
+  } finally {
+    if (timer) clearTimeout(timer);
   }
 }
