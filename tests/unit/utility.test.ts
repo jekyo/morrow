@@ -7,6 +7,12 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
  */
 let launches = 0;
 const servers: { id: number; closed: boolean }[] = [];
+/**
+ * When set, `context.close()` returns a promise that never settles. This is
+ * the renderer-has-crashed case, and it is the one the old cleanup could not
+ * survive: `.catch()` handles a rejection, nothing handles a hang.
+ */
+let hangContextClose = false;
 
 vi.mock("camoufox-js", () => ({
   launchServer: vi.fn(async () => {
@@ -24,7 +30,9 @@ vi.mock("camoufox-js", () => ({
 vi.mock("playwright-core", () => ({
   firefox: {
     connect: vi.fn(async () => ({
-      newContext: async () => ({ close: async () => {} }),
+      newContext: async () => ({
+        close: () => (hangContextClose ? new Promise<void>(() => {}) : Promise.resolve()),
+      }),
       close: async () => {},
     })),
   },
@@ -32,7 +40,7 @@ vi.mock("playwright-core", () => ({
 
 vi.mock("@/server/profiles", () => ({ getProfileManager: () => ({ start: async () => ({}) }) }));
 
-const { ephemeralResolver } = await import("@/server/browser/utility");
+const { ephemeralResolver, utilityStats } = await import("@/server/browser/utility");
 
 /** Acquire and immediately release, which is what a finished scrape does. */
 async function scrape() {
@@ -43,12 +51,14 @@ async function scrape() {
 beforeEach(() => {
   launches = 0;
   servers.length = 0;
+  hangContextClose = false;
   (globalThis as Record<string, unknown>).__morrow = {};
   delete process.env.MORROW_UTILITY_MAX_CONTEXTS;
 });
 
 afterEach(() => {
   delete process.env.MORROW_UTILITY_MAX_CONTEXTS;
+  vi.useRealTimers();
 });
 
 describe("the utility browser is recycled", () => {
@@ -158,5 +168,114 @@ describe("the utility browser is recycled", () => {
     process.env.MORROW_UTILITY_MAX_CONTEXTS = "lots";
     for (let i = 0; i < 5; i++) await scrape();
     expect(launches).toBe(1);
+  });
+});
+
+/**
+ * The browser was OOM-killed roughly every four hours with recycling already
+ * in place, which means a retired process was sometimes not dying. Every test
+ * here is about that: the ways a close can fail to happen, and what must
+ * happen anyway.
+ */
+describe("a retired browser is reaped even when cleanup misbehaves", () => {
+  // The ordering fix. Releasing the last context on a retired server closes
+  // the process, and the process takes the context with it — so the context's
+  // own close is never awaited and cannot hang in front of the reaping.
+  it("closes a drained server without waiting for the context to close", async () => {
+    process.env.MORROW_UTILITY_MAX_CONTEXTS = "1";
+    hangContextClose = true;
+
+    const held = await ephemeralResolver().acquire(); // spends and retires server 1
+    expect(servers[0].closed).toBe(false);
+
+    // Would never resolve under the old order, which closed the context first.
+    await held.release();
+    expect(servers[0].closed).toBe(true);
+  });
+
+  // A live server keeps its contexts closed politely, and a context that will
+  // not close must not stop the caller — or the slot it holds is never
+  // returned and the server never drains.
+  it("gives up on a context that will not close, and still releases", async () => {
+    vi.useFakeTimers();
+    hangContextClose = true;
+
+    // No quota reached, so this server stays in service and the polite close
+    // is actually attempted.
+    const held = await ephemeralResolver().acquire();
+    let released = false;
+    const releasing = held.release().then(() => {
+      released = true;
+    });
+
+    await vi.advanceTimersByTimeAsync(9_000);
+    expect(released).toBe(false); // still giving it a chance
+
+    await vi.advanceTimersByTimeAsync(2_000);
+    await releasing;
+    expect(released).toBe(true);
+  });
+
+  // The backstop. A context whose release never arrives at all would
+  // otherwise keep a retired process, and every megabyte it grew, alive for
+  // the lifetime of the pod.
+  it("closes a retired server that never drains, once its grace period is up", async () => {
+    vi.useFakeTimers();
+    process.env.MORROW_UTILITY_MAX_CONTEXTS = "1";
+
+    await ephemeralResolver().acquire(); // spent, retired, and never released
+    expect(servers[0].closed).toBe(false);
+
+    await vi.advanceTimersByTimeAsync(30_000);
+    expect(servers[0].closed).toBe(false); // not yet; draining is normal
+
+    await vi.advanceTimersByTimeAsync(31_000);
+    expect(servers[0].closed).toBe(true);
+  });
+
+  // A server that drained normally must not be closed a second time when its
+  // grace period comes round.
+  it("does not close a server twice", async () => {
+    vi.useFakeTimers();
+    process.env.MORROW_UTILITY_MAX_CONTEXTS = "1";
+
+    const held = await ephemeralResolver().acquire();
+    await held.release();
+    expect(servers[0].closed).toBe(true);
+
+    let closedAgain = false;
+    servers[0].closed = false; // so a second close would be visible
+    const watch = setInterval(() => {
+      if (servers[0].closed) closedAgain = true;
+    }, 1_000);
+    await vi.advanceTimersByTimeAsync(120_000);
+    clearInterval(watch);
+    expect(closedAgain).toBe(false);
+  });
+});
+
+/**
+ * Morrow reported Node's RSS, which is a few hundred megabytes and never what
+ * the kernel killed. The browsers are the rest of the container, and they were
+ * invisible — so every OOM arrived without warning.
+ */
+describe("the browsers are visible in metrics", () => {
+  it("counts a browser while it is live and stops counting it once closed", async () => {
+    process.env.MORROW_UTILITY_MAX_CONTEXTS = "1";
+    const before = utilityStats().browsers;
+
+    const held = await ephemeralResolver().acquire();
+    const during = utilityStats();
+    expect(during.browsers).toBe(before + 1);
+    expect(during.openContexts).toBeGreaterThanOrEqual(1);
+    expect(during.retiring).toBeGreaterThanOrEqual(1); // quota of one, so already spent
+
+    await held.release();
+    expect(utilityStats().browsers).toBe(before);
+  });
+
+  it("reports the quota it is recycling against", async () => {
+    process.env.MORROW_UTILITY_MAX_CONTEXTS = "75";
+    expect(utilityStats().maxContexts).toBe(75);
   });
 });

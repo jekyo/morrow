@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { requireAuth, handle } from "@/server/api";
 import { config } from "@/server/config";
 import { getDb } from "@/server/db";
+import { utilityStats } from "@/server/browser/utility";
 
 export const dynamic = "force-dynamic";
 
@@ -30,6 +31,11 @@ export async function GET(req: Request) {
         total24h: db.countEventsSince("scrape.", since),
         failed24h: db.countEventsSince("scrape.failed", since),
       },
+      // The browsers, which Node's own RSS says nothing about: Node is a few
+      // hundred megabytes, the browsers are the rest of the container, and the
+      // browsers are what the kernel kills. `browsers` above 1 for more than a
+      // few seconds means a retired process is not draining.
+      utility: utilityStats(),
       system: {
         memory: process.memoryUsage.rss(),
         uptime: process.uptime(),
